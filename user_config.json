@@ -1,0 +1,14 @@
+{
+    "Records": [
+        {
+            "keywords": "apple,banana",
+            "color": "blue",
+            "limit": 25
+        },
+        {
+            "keywords": "apple,banana",
+            "color": "yellow",
+            "limit": 25
+        }
+            ]
+}
