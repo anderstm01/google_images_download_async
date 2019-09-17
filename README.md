@@ -5,7 +5,7 @@ This is a rewrite of hardikvasa's google-images-download https://github.com/hard
 
 Python version 3.7.4 or greater is required
 
-Not all features have been implemented from the orginal project.
+Not all features have been implemented from the original project.
 
 Examples:
 
