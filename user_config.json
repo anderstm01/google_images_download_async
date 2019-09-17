@@ -3,12 +3,12 @@
         {
             "keywords": "apple,banana",
             "color": "blue",
-            "limit": 25
+            "limit": 3
         },
         {
             "keywords": "apple,banana",
             "color": "yellow",
-            "limit": 25
+            "limit": 3
         }
             ]
 }
