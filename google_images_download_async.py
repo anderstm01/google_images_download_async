@@ -8,7 +8,6 @@ import time
 import os
 import json
 import aiofiles
-#from aiofile import AIOFile, Reader, Writer
 import aiohttp
 
 #Local imports:
@@ -162,20 +161,21 @@ class GoogleImagesDownloader():
         """
         start_line = page.find('rg_meta notranslate')
         if start_line == -1:  # If no links are found then give an error!
-            end_quote = 0
-            link = "no_links"
-            return link, end_quote
+            final_object = "no_links"
+            end_object = 0
 
-        start_line = page.find('class="rg_meta notranslate">')
-        start_object = page.find('{', start_line + 1)
-        end_object = page.find('</div>', start_object + 1)
-        object_raw = str(page[start_object:end_object])
+        else:
+            start_line = page.find('class="rg_meta notranslate">')
+            start_object = page.find('{', start_line + 1)
+            end_object = page.find('</div>', start_object + 1)
+            object_raw = str(page[start_object:end_object])
 
-        try:
-            object_decode = bytes(object_raw, "utf-8").decode("unicode_escape")
-            final_object = json.loads(object_decode)
-        except Exception:
-            final_object = ""
+            try:
+                object_decode = bytes(object_raw, "utf-8").decode("unicode_escape")
+                final_object = json.loads(object_decode)
+            except Exception:
+                final_object = ""
+
         return final_object, end_object
 
     async def get_all_items(self, page, argument):
@@ -192,7 +192,7 @@ class GoogleImagesDownloader():
             if image_meta_data == "no_links":
                 break
 
-            elif not image_meta_data:
+            elif image_meta_data == '':
                 page = page[end_content:]
 
             elif argument['offset'] and count < int(argument['offset']):
