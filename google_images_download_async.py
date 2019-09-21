@@ -7,12 +7,13 @@ import asyncio
 import time
 import os
 import json
-import aiofiles
-import aiohttp
 
 #Local imports:
 from config_parser import parse_config
 
+#Third party imports:
+import aiofiles
+import aiohttp
 
 async def expand_arguments(arguments: dict) -> list:
     """
