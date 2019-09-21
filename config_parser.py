@@ -16,7 +16,8 @@ async def parse_config():
     Return: list of dicts that contain the search criteria
     '''
     parser = argparse.ArgumentParser(prog='google_async_image_downloader.py',
-                                     description='Downloads images from google images.')
+                                     description='Downloads images from google images.',
+                                     epilog='NOTE: Not all above options has been implemented.')
 
     parser.add_argument('-cf',
                         '--config_file',
