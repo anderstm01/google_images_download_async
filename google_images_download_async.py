@@ -131,7 +131,7 @@ class GoogleImagesDownloader():
             filename = f'{self.argument["prefix"]} {filename}'
 
         if self.argument["suffix"]:
-            filename, ext = filename.split('.')
+            filename, ext = filename.rsplit('.', 1)
             filename = f'{filename} {self.argument["suffix"]}.{ext}'
 
         async with aiofiles.open(f'{self.main_directory}/{sub_dir}/{filename}', 'wb') as file:
