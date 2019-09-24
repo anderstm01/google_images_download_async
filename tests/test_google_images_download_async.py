@@ -34,10 +34,10 @@ async def test_image_download_task():
             [GoogleImagesDownloader(url_parm_json_file,{"prefix":'',"suffix":'suf'}), ['',' suf']],
             [GoogleImagesDownloader(url_parm_json_file,{"prefix":'pre',"suffix":'suf'}), ['pre ',' suf']]]
     
-    test_data =  [['https://www.python.org/static/opengraph-icon-200x200.png',f'downloads/{prefix}opengraph-icon-200x200{suffix}.png'],
-                  ['https://www.python.org/static/opengraph-icon-200.png',f'downloads/{prefix}opengraph-icon-200{suffix}.png'],
-                  ['http://www.ufnwefnewnioewiofwe.com/image.jpg',f'downloads/{prefix}image{suffix}.jpg'],
-                  ['https%3A%2F%2Fspecials-images.forbesimg.com%2Fdam%2Fimageserve%2F1055486686%2F960x0.jpg%3Ffit%3Dscale',f'downloads/{prefix}960x0{suffix}.jpg'],
+    test_data =  [['https://www.python.org/static/opengraph-icon-200x200.png',f'Downloads/{prefix}opengraph-icon-200x200{suffix}.png'],
+                  ['https://www.python.org/static/opengraph-icon-200.png',f'Downloads/{prefix}opengraph-icon-200{suffix}.png'],
+                  ['http://www.ufnwefnewnioewiofwe.com/image.jpg',f'Downloads/{prefix}image{suffix}.jpg'],
+                  ['https%3A%2F%2Fspecials-images.forbesimg.com%2Fdam%2Fimageserve%2F1055486686%2F960x0.jpg%3Ffit%3Dscale',f'Downloads/{prefix}960x0{suffix}.jpg'],
                   ['bad url','bad url']]
                 
 
@@ -57,7 +57,7 @@ async def test_image_download_task():
             suffix = prefix_suffix[1]
             assert os.path.exists(i[0][1]) == i[1][1]
 
-    shutil.rmtree('downloads')
+    shutil.rmtree('Downloads')
 
 @pytest.mark.asyncio
 async def test_silent_mode(capsys):
