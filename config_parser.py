@@ -3,18 +3,19 @@
 Google_images_download_async config parsing module.
 """
 
-#Builtin imports:
+# Builtin imports:
 import argparse
 import json
 import os
 from pathlib import Path
 
+
 async def parse_config():
-    '''
+    """
     Reads user defined json config files or parses user provided arguments.
 
     Return: list of dicts that contain the search criteria
-    '''
+    """
     parser = argparse.ArgumentParser(prog='google_async_image_downloader.py',
                                      description='Downloads images from google images.',
                                      epilog='NOTE: Not all above options has been implemented.')
@@ -208,6 +209,7 @@ async def parse_config():
                         "save_source", "silent_mode", "ignore_urls"]
 
         record_template = dict.fromkeys(default_args)
+        record_template.update(vars(args))
 
         with open(Path(args.config_file)) as config_file:
             records_json = json.load(config_file)['Records']
