@@ -37,6 +37,7 @@ async def parse_config():
                         help='comma separated additional words added before main keyword',
                         metavar='<k1,k2...>')
     parser.add_argument('-l', '--limit',
+                        default=1,
                         help='delimited list input')
     parser.add_argument('-f', '--format',
                         help='download images with specific format',
@@ -148,6 +149,10 @@ async def parse_config():
                         default=False,
                         help="A word that you would want to prefix in front of each image name",
                         metavar='<prefix>')
+    parser.add_argument('-su', '--suffix',
+                        default=False,
+                        help="A word that you would want to add to the end of each image name",
+                        metavar='<suffix>')
     parser.add_argument('-px', '--proxy',
                         help='specify a proxy address and port',
                         metavar='<address:port>')
@@ -198,7 +203,7 @@ async def parse_config():
                         "single_image", "output_directory", "image_directory", "no_directory",
                         "proxy", "similar_images", "specific_site", "print_urls", "print_size",
                         "print_paths", "metadata", "extract_metadata", "socket_timeout",
-                        "thumbnail", "thumbnail_only", "language", "prefix", "chromedriver",
+                        "thumbnail", "thumbnail_only", "language", "prefix", "suffix", "chromedriver",
                         "related_images", "safe_search", "no_numbering", "offset", "no_download",
                         "save_source", "silent_mode", "ignore_urls"]
 
