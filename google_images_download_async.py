@@ -305,20 +305,34 @@ async def main() -> None:
     """
     records, url_parm_json_file = await parse_config()
 
+<<<<<<< HEAD
     tasks = []
+=======
+    gid_list, tasks_list = [], []
+>>>>>>> 4f4b9398dc0d4d9092e5427bd2b870f06dafec8c
 
     print('Starting image download')
 
     for arguments in records:
         if arguments['single_image']:
+<<<<<<< HEAD
             gid = GoogleImagesDownloader(url_parm_json_file, arguments)
             tasks.append(gid.gather_image_task())
+=======
+            gid_list.append(GoogleImagesDownloader(url_parm_json_file, arguments))
+            tasks_list.append(gid_list[i].gather_image_task())
+>>>>>>> 4f4b9398dc0d4d9092e5427bd2b870f06dafec8c
 
         else:
             expanded_arguments = await expand_arguments(arguments)
             for argument in expanded_arguments:
+<<<<<<< HEAD
                 gid = GoogleImagesDownloader(url_parm_json_file, argument)
                 tasks.append(gid.gather_image_task())
+=======
+                gid_list.append(GoogleImagesDownloader(url_parm_json_file, argument))
+                tasks_list.append(gid_list[i].gather_image_task())
+>>>>>>> 4f4b9398dc0d4d9092e5427bd2b870f06dafec8c
 
     await asyncio.gather(*tasks)
 
