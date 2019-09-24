@@ -41,6 +41,7 @@ class SilentMode:
     """
     def __init__(self, silent_mode: bool):
         self.silent_mode = silent_mode
+        self.orginal_stdout = sys.stdout
 
     async def __aenter__(self) -> None:
         """
@@ -54,9 +55,11 @@ class SilentMode:
         Restores the the standard output stream to its original value.
         """
         if self.silent_mode:
-            await asyncio.sleep(.1)
-            sys.stdout = sys.__stdout__
+            sys.stdout.flush()
+            while len(asyncio.all_tasks()) > 3:
+                await asyncio.sleep(.1)
 
+            sys.stdout = self.orginal_stdout
 
 class GoogleImagesDownloader:
     """
