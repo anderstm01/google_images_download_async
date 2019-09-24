@@ -8,7 +8,7 @@ import time
 import os
 import sys
 import json
-from urllib.parse import unquote
+from urllib.parse import unquote, quote
 
 #Third party imports:
 import aiofiles
@@ -127,6 +127,13 @@ class GoogleImagesDownloader():
         if not any(extension in filename for extension in self.extensions):
             filename = f'{filename}.jpg'
 
+        if self.argument["prefix"]:
+            filename = f'{self.argument["prefix"]} {filename}'
+
+        if self.argument["suffix"]:
+            filename, ext = filename.split('.')
+            filename = f'{filename} {self.argument["suffix"]}.{ext}'
+
         async with aiofiles.open(f'{self.main_directory}/{sub_dir}/{filename}', 'wb') as file:
             print(f'Begin writing to {filename}')
             await file.write(content)
@@ -181,7 +188,7 @@ class GoogleImagesDownloader():
         safe_search_string = "&safe=active"
         # check the args and choose the URL
         if not url:
-            url = (f'https://www.google.com/search?q={search_term}' +
+            url = (f'https://www.google.com/search?q={quote(search_term)}' +
                    f'&espv=2&biw=1366&bih=667&site=webhp&source=lnms&tbm=isch{params}' +
                    '&sa=X&ei=XosDVaCXD8TasATItgE&ved=0CAcQ_AUoAg')
 
@@ -305,34 +312,20 @@ async def main() -> None:
     """
     records, url_parm_json_file = await parse_config()
 
-<<<<<<< HEAD
     tasks = []
-=======
-    gid_list, tasks_list = [], []
->>>>>>> 4f4b9398dc0d4d9092e5427bd2b870f06dafec8c
 
     print('Starting image download')
 
     for arguments in records:
         if arguments['single_image']:
-<<<<<<< HEAD
             gid = GoogleImagesDownloader(url_parm_json_file, arguments)
             tasks.append(gid.gather_image_task())
-=======
-            gid_list.append(GoogleImagesDownloader(url_parm_json_file, arguments))
-            tasks_list.append(gid_list[i].gather_image_task())
->>>>>>> 4f4b9398dc0d4d9092e5427bd2b870f06dafec8c
 
         else:
             expanded_arguments = await expand_arguments(arguments)
             for argument in expanded_arguments:
-<<<<<<< HEAD
                 gid = GoogleImagesDownloader(url_parm_json_file, argument)
                 tasks.append(gid.gather_image_task())
-=======
-                gid_list.append(GoogleImagesDownloader(url_parm_json_file, argument))
-                tasks_list.append(gid_list[i].gather_image_task())
->>>>>>> 4f4b9398dc0d4d9092e5427bd2b870f06dafec8c
 
     await asyncio.gather(*tasks)
 
