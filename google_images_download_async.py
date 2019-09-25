@@ -90,17 +90,18 @@ class GoogleImagesDownloader:
                 try:
                     async with session.get(url) as resp:
                         try:
-                            if resp.status != 200:
-                                raise DownloadError(url, resp.status)
+                            if resp.status == 200:
 
-                            if request_type == 'bytes':
-                                content = await resp.read()
+                                if request_type == 'bytes':
+                                    content = await resp.read()
 
-                            else:
-                                content = await resp.text()
+                                else:
+                                    content = await resp.text()
 
-                            print(f'Finished downloading {url}')
-                            return content
+                                print(f'Finished downloading {url}')
+                                return content
+
+                            raise DownloadError(url, resp.status)
 
                         except DownloadError as error:
                             print(error)
@@ -314,6 +315,7 @@ class DownloadError(Exception):
     def __init__(self, url, status):
         self.url = url
         self.status = status
+        super().__init__()
 
     def __str__(self):
         return f'***Unable to download {self.url}, HTTP Status Code was {self.status}'
