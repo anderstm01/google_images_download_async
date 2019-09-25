@@ -32,9 +32,11 @@ async def parse_config():
                         help='extract list of keywords from a text file',
                         metavar='<path>')
     parser.add_argument('-sk', '--suffix_keywords',
+                        default = '',
                         help='comma separated additional words added after to main keyword',
                         metavar='<k1,k2...>')
     parser.add_argument('-pk', '--prefix_keywords',
+                        default = '',
                         help='comma separated additional words added before main keyword',
                         metavar='<k1,k2...>')
     parser.add_argument('-l', '--limit',
