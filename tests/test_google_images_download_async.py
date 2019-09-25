@@ -14,7 +14,7 @@ import asyncio
 #Local imports:
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from config_parser import parse_config
-from google_images_download_async import GoogleImagesDownloader, expand_arguments, SilentMode
+from google_images_download_async import GoogleImagesDownloader, expand_arguments
 
 with open(Path(os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))).joinpath('url_parms.json')) as file:
     url_parm_json_file = json.load(file)
@@ -28,10 +28,10 @@ async def test_image_download_task():
         
     prefix, suffix = '', ''
     
-    gids = [[GoogleImagesDownloader(url_parm_json_file,{"prefix":'',"suffix":''}), ['','']],
-            [GoogleImagesDownloader(url_parm_json_file,{"prefix":'pre',"suffix":''}), ['pre ','']],
-            [GoogleImagesDownloader(url_parm_json_file,{"prefix":'',"suffix":'suf'}), ['',' suf']],
-            [GoogleImagesDownloader(url_parm_json_file,{"prefix":'pre',"suffix":'suf'}), ['pre ',' suf']]]
+    gids = [[GoogleImagesDownloader(url_parm_json_file,{"prefix":'',"suffix":'','silent_mode':False}), ['','']],
+            [GoogleImagesDownloader(url_parm_json_file,{"prefix":'pre',"suffix":'','silent_mode':False}), ['pre ','']],
+            [GoogleImagesDownloader(url_parm_json_file,{"prefix":'',"suffix":'suf','silent_mode':False}), ['',' suf']],
+            [GoogleImagesDownloader(url_parm_json_file,{"prefix":'pre',"suffix":'suf','silent_mode':False}), ['pre ',' suf']]]
     
     test_data =  [['https://www.python.org/static/opengraph-icon-200x200.png',f'Downloads/{prefix}opengraph-icon-200x200{suffix}.png'],
                   ['https://www.python.org/static/opengraph-icon-200.png',f'Downloads/{prefix}opengraph-icon-200{suffix}.png'],
@@ -59,31 +59,6 @@ async def test_image_download_task():
     shutil.rmtree('Downloads')
 
 @pytest.mark.asyncio
-async def test_silent_mode(capsys):
-    """
-    test SilentMode() 
-    """
-    test_data = [True,False]
-
-    for tests in test_data:
-
-        orginal_stdout = sys.stdout 
-
-        async with SilentMode(tests):
-            new_stdout =  sys.stdout
-            if tests == True:
-                assert sys.stdout != orginal_stdout
-                assert orginal_stdout != new_stdout
-                assert sys.stdout == new_stdout
-
-            if tests == False:
-                assert sys.stdout == orginal_stdout
-                assert orginal_stdout == new_stdout
-                assert sys.stdout == new_stdout
-
-        assert sys.stdout == orginal_stdout
-
-@pytest.mark.asyncio
 async def test_download_url_data(capsys):
     """
     test image download method
@@ -101,7 +76,7 @@ async def test_download_url_data(capsys):
 
                  ['https://www.python.org/static/opengraph-icon-200.png','bytes']]
 
-    gid = GoogleImagesDownloader(url_parm_json_file,{})
+    gid = GoogleImagesDownloader(url_parm_json_file,{'silent_mode':False})
     for i, tests in enumerate(test_data):
 
         test_expected_resp = [[type(b''), f'Begin downloading {tests[0]}\nFinished downloading {tests[0]}\n'],
@@ -115,6 +90,24 @@ async def test_download_url_data(capsys):
         captured = capsys.readouterr()
         assert captured.out == test_expected_resp[i][1]
 
+@pytest.mark.asyncio
+async def test_write_to_file(capsys):
+    
+    content = b''
+        
+    url = 'https://www.python.org/static/opengraph-icon-200x200.png?stuff'
+        
+    sub_dir = ''
+    
+    gid = GoogleImagesDownloader(url_parm_json_file,{"prefix":'',"suffix":'','silent_mode':True})
+    
+    await gid.write_to_file(url, content, sub_dir)
+    captured = capsys.readouterr()
+    assert captured.err == ''
+    assert os.path.exists('Downloads/opengraph-icon-200x200.png') == True
+    
+    shutil.rmtree('Downloads')
+    
 
 try:        
     shutil.rmtree('Downloads')
