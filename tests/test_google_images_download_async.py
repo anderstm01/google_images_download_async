@@ -16,16 +16,15 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 from config_parser import parse_config
 from google_images_download_async import GoogleImagesDownloader, expand_arguments, SilentMode
 
+with open(Path(os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))).joinpath('url_parms.json')) as file:
+    url_parm_json_file = json.load(file)
 
 
 @pytest.mark.asyncio
 async def test_image_download_task():
     """
     test async image download
-    """
-    with open(Path(os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))).joinpath('url_parms.json')) as file:
-        url_parm_json_file = json.load(file)
-        
+    """        
         
     prefix, suffix = '', ''
     
@@ -83,4 +82,41 @@ async def test_silent_mode(capsys):
                 assert sys.stdout == new_stdout
 
         assert sys.stdout == orginal_stdout
-        
+
+@pytest.mark.asyncio
+async def test_download_url_data(capsys):
+    """
+    test image download method
+    """
+    
+    test_resp_place_holder = ''
+
+    test_data = [['https://www.python.org/static/opengraph-icon-200x200.png','bytes'],
+
+                 ['https://www.google.com/search?rlz=1CACBUY_enUS865&tbm=isch&sxsrf=' +
+                  'ACYBGNSOFkjkRV_jlxY7_04l8lVUkA3yXw:1569373001538&q=python&chips=q' +
+                  ':python,g_1:logo:ctsVDjMBDgY%3D&usg=AI4_-kTQt5Yjgzs6XSoeHlcjjpues' +
+                  'pKMKw&sa=X&ved=0ahUKEwil6JqC4urkAhVpc98KHSqMAQoQ4lYINigF&biw=1920' +
+                  '&bih=977&dpr=1','text'],
+
+                 ['https://www.python.org/static/opengraph-icon-200.png','bytes']]
+
+    gid = GoogleImagesDownloader(url_parm_json_file,{})
+    for i, tests in enumerate(test_data):
+
+        test_expected_resp = [[type(b''), f'Begin downloading {tests[0]}\nFinished downloading {tests[0]}\n'],
+                              [type(''), f'Begin downloading {tests[0]}\nFinished downloading {tests[0]}\n'],
+                              [type(None), (f'Begin downloading {tests[0]}\n***Unable to download {tests[0]},' +
+                                            ' HTTP Status Code was 404\n')]]
+
+        res = await gid.download_url_data(tests[0], tests[1])
+        assert type(res) == test_expected_resp[i][0]
+
+        captured = capsys.readouterr()
+        assert captured.out == test_expected_resp[i][1]
+
+
+try:        
+    shutil.rmtree('Downloads')
+except:
+    pass
