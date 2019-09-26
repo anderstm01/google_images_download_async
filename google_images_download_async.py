@@ -6,7 +6,6 @@ Google_images_download_async main module.
 import asyncio
 import time
 import os
-import sys
 import json
 from urllib.parse import unquote, quote
 from pathlib import Path
