@@ -106,9 +106,9 @@ async def parse_config():
                         choices=['tall', 'square', 'wide', 'panoramic'],
                         help='comma separated additional words added to keywords',
                         metavar='<aspect>')
-    # parser.add_argument('-si', '--similar_images',
-    #                     help='downloads images very similar to the image URL you provide',
-    #                     metavar='<url>')
+    parser.add_argument('-si', '--similar_images',
+                        help='downloads images very similar to the image URL you provide',
+                        metavar='<url>')
     # parser.add_argument('-ss', '--specific_site',
     #                     help='downloads images that are indexed from a specific website',
     #                     metavar='<url>')
