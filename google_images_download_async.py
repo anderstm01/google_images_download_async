@@ -58,7 +58,8 @@ class GoogleImagesDownloader():
         await asyncio.sleep(0.1)
 
         try:
-            if not self.argument['silent_mode']: print(f'Begin downloading {url}')
+            if not self.argument['silent_mode']:
+                print(f'Begin downloading {url}')
 
             headers = {}
             headers['User-Agent'] = ('Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 ' +
@@ -67,33 +68,35 @@ class GoogleImagesDownloader():
             timeout = aiohttp.ClientTimeout(total=5.0)
 
             async with aiohttp.ClientSession(headers=headers, timeout=timeout) as session:
-                try:
-                    async with session.get(url) as resp:
-                        try:
-                            if resp.status == 200:
-                                if request_type == 'bytes':
-                                    content = await resp.read()
+                async with session.get(url) as resp:
+                    if resp.status == 200:
+                        if request_type == 'bytes':
+                            content = await resp.read()
 
-                                else:
-                                    content = await resp.text()
+                        else:
+                            content = await resp.text()
 
-                                if not self.argument['silent_mode']: print(f'Finished downloading {url}')
+                        if not self.argument['silent_mode']:
+                            print(f'Finished downloading {url}')
 
-                                return content
+                        return content
 
-                            raise DownloadError(url, resp.status)
+                    raise DownloadError(url, resp.status)
 
-                        except DownloadError as error:
-                            if not self.argument['silent_mode']: print(error)
+        except DownloadError as error:
+            if not self.argument['silent_mode']: 
+                print(error)
 
-                except aiohttp.client_exceptions.ClientConnectorError as error:
-                    if not self.argument['silent_mode']: print(f'***Unable to Connect to Client {error} URL: {url}')
+        except aiohttp.client_exceptions.ClientConnectorError as error:
+            if not self.argument['silent_mode']:
+                print(f'***Unable to Connect to Client {error} URL: {url}')
 
-                except aiohttp.client_exceptions.InvalidURL as error:
-                    if not self.argument['silent_mode']: print(f'***Invalid URL: {error}')
+        except aiohttp.client_exceptions.InvalidURL as error:
+            if not self.argument['silent_mode']: print(f'***Invalid URL: {error}')
 
         except asyncio.TimeoutError:
-            if not self.argument['silent_mode']: print(f'Timeout downloading: {url}')
+            if not self.argument['silent_mode']:
+                print(f'Timeout downloading: {url}')
 
     async def write_to_file(self, url: str, content: bytes, sub_dir: str) -> None:
         """
@@ -124,9 +127,11 @@ class GoogleImagesDownloader():
             filename = f'{filename} {self.argument["suffix"]}.{ext}'
 
         async with aiofiles.open(self.main_directory.joinpath(sub_dir).joinpath(filename), 'wb') as file:
-            if not self.argument['silent_mode']: print(f'Begin writing to {filename}')
+            if not self.argument['silent_mode']:
+                print(f'Begin writing to {filename}')
             await file.write(content)
-            if not self.argument['silent_mode']: print(f'Finished writing to {filename}')
+            if not self.argument['silent_mode']:
+                print(f'Finished writing to {filename}')
 
     async def build_url_parameters(self) -> tuple:
         """
@@ -173,7 +178,10 @@ class GoogleImagesDownloader():
         if self.argument["suffix_keywords"]:
             search_term = f'{search_term} {self.argument["suffix_keywords"]}'
 
-        if not self.argument['url']:
+        if self.argument['url']:
+            url = self.argument['url']
+
+        else:
             url = (f'https://www.google.com/search?q={quote(search_term)}' +
                    f'&espv=2&biw=1366&bih=667&site=webhp&source=lnms&tbm=isch{params}' +
                    '&sa=X&ei=XosDVaCXD8TasATItgE&ved=0CAcQ_AUoAg')
@@ -269,7 +277,8 @@ class GoogleImagesDownloader():
         if content:
             await self.write_to_file(url, content, sub_dir)
         else:
-            if not self.argument['silent_mode']: print(f'***File not write: {url}')
+            if not self.argument['silent_mode']:
+                print(f'***File not write: {url}')
 
     async def gather_image_task(self) -> None:
         """
