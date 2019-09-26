@@ -20,19 +20,40 @@ from config_parser import parse_config
 
 async def expand_arguments(arguments: dict) -> list:
     """
-    If record contains more than one keyword this function
-    splits it into list of records with only one keyword.
+    Reads the arguments obtained from parse_config() and splits
+    them into a list dict objects that can be processed concurrently.
     """
+    async def expand_arguments_helper(expanded_arguments: list, arguments: dict) -> list:
+        """
+        This removes duplicate search terms by copying and initing them
+        to their defaults before they are set in expand_arguments().
+        """
+        expanded_arguments.append(arguments.copy())
+        expanded_arguments[-1]['url'] = ''
+        expanded_arguments[-1]['similar_images'] = ''
+        expanded_arguments[-1]['prefix_keywords'] = ''
+        expanded_arguments[-1]['keywords'] = ''
+        expanded_arguments[-1]['suffix_keywords'] = ''
+        return expanded_arguments
+
     expanded_arguments = []
 
     prefixes = [str(prefix) for prefix in arguments['prefix_keywords'].split(',')]
     suffixes = [str(suffix) for suffix in arguments['suffix_keywords'].split(',')]
     keywords = [str(keyword) for keyword in arguments['keywords'].split(',')]
 
+    if arguments['url']:
+        expanded_arguments = await expand_arguments_helper(expanded_arguments, arguments)
+        expanded_arguments[-1]['url'] = arguments['url']
+
+    if arguments['similar_images']:
+        expanded_arguments = await expand_arguments_helper(expanded_arguments, arguments)
+        expanded_arguments[-1]['similar_images'] = arguments['similar_images']
+
     for prefix in prefixes:
         for suffix in suffixes:
             for keyword in keywords:
-                expanded_arguments.append(arguments.copy())
+                expanded_arguments = await expand_arguments_helper(expanded_arguments, arguments)
                 expanded_arguments[-1]['prefix_keywords'] = prefix
                 expanded_arguments[-1]['keywords'] = keyword
                 expanded_arguments[-1]['suffix_keywords'] = suffix
@@ -83,7 +104,7 @@ class GoogleImagesDownloader():
                     raise DownloadError(url, resp.status)
 
         except DownloadError as error:
-            if not self.argument['silent_mode']: 
+            if not self.argument['silent_mode']:
                 print(error)
 
         except aiohttp.client_exceptions.ClientConnectorError as error:
@@ -132,7 +153,7 @@ class GoogleImagesDownloader():
             if not self.argument['silent_mode']:
                 print(f'Finished writing to {filename}')
 
-    async def build_url_parameters(self) -> tuple:
+    async def build_url_parameters(self) -> str:
         """
         Returns tuple of url parameters.
         """
@@ -169,7 +190,10 @@ class GoogleImagesDownloader():
         # check safe_search
         safe_search_string = "&safe=active"
 
-        search_term = self.argument["keywords"]
+        if self.argument['similar_images']:
+            search_term = await self.similar_images()
+        else:
+            search_term = self.argument["keywords"]
 
         if self.argument["prefix_keywords"]:
             search_term = f'{self.argument["prefix_keywords"]} {search_term}'
@@ -190,6 +214,27 @@ class GoogleImagesDownloader():
             url = url + safe_search_string
 
         return url
+
+    async def similar_images(self):
+        """
+
+        """
+        url = (f'https://www.google.com/searchbyimage?' +
+               f'site=search&sa=X&image_url={self.argument["similar_images"]}')
+
+        content = await self.download_url_data(url, 'text')
+
+        start_content = content.find('AMhZZ')
+        end_content = content.find('&', start_content)
+        url = f'https://www.google.com/search?tbs=sbi:{content[start_content:end_content]}&site=search&sa=X'
+
+        content = await self.download_url_data(url, 'text')
+
+        start_content = content.find('/search?sa=X&amp;q=')
+        end_content = content.find(';', start_content + 19)
+        search_term = content[start_content + 19:end_content]
+
+        return search_term
 
     async def format_image_meta_data(self, obj: dict) -> dict:
         """
@@ -244,7 +289,7 @@ class GoogleImagesDownloader():
             if image_meta_data == "no_links":
                 break
 
-            elif image_meta_data == '':
+            if image_meta_data == '':
                 page = page[end_content:]
 
             elif self.argument['offset'] and count < int(self.argument['offset']):
