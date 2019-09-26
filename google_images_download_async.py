@@ -4,11 +4,11 @@ Google_images_download_async main module.
 
 # Builtin imports:
 import asyncio
-import time
-import os
 import json
-from urllib.parse import unquote, quote
+import os
+import time
 from pathlib import Path
+from urllib.parse import unquote, quote
 
 # Third party imports:
 import aiofiles
@@ -66,7 +66,7 @@ class GoogleImagesDownloader():
     Main class of downloader.
     """
     def __init__(self, url_parm_json_file, argument):
-        self.main_directory = Path("Downloads")
+        self.main_directory = Path(argument['output_directory'] or "Downloads")
         self.extensions = (".jpg", ".jpeg", ".gif", ".png", ".bmp", ".svg", ".webp", ".ico")
         self.url_parm_json_file = url_parm_json_file
         self.argument = argument
@@ -112,7 +112,8 @@ class GoogleImagesDownloader():
                 print(f'***Unable to Connect to Client {error} URL: {url}')
 
         except aiohttp.client_exceptions.InvalidURL as error:
-            if not self.argument['silent_mode']: print(f'***Invalid URL: {error}')
+            if not self.argument['silent_mode']:
+                print(f'***Invalid URL: {error}')
 
         except asyncio.TimeoutError:
             if not self.argument['silent_mode']:
@@ -146,7 +147,12 @@ class GoogleImagesDownloader():
             filename, ext = filename.rsplit('.', 1)
             filename = f'{filename} {self.argument["suffix"]}.{ext}'
 
-        async with aiofiles.open(self.main_directory.joinpath(sub_dir).joinpath(filename), 'wb') as file:
+        if sub_dir:
+            file_path = self.main_directory.joinpath(sub_dir).joinpath(filename)
+        else:
+            file_path = self.main_directory.joinpath(filename)
+
+        async with aiofiles.open(file_path, 'wb') as file:
             if not self.argument['silent_mode']:
                 print(f'Begin writing to {filename}')
             await file.write(content)
@@ -155,7 +161,7 @@ class GoogleImagesDownloader():
 
     async def build_url_parameters(self) -> str:
         """
-        Returns tuple of url parameters.
+        Returns string of url parameters.
         """
         lang_url = ''
         time_range = ''
@@ -183,9 +189,9 @@ class GoogleImagesDownloader():
 
         return params
 
-    async def build_search_url(self, params: dict) -> str:
+    async def build_search_url(self, params: str) -> str:
         """
-
+        Creates search url from provided params.
         """
         # check safe_search
         safe_search_string = "&safe=active"
@@ -238,7 +244,7 @@ class GoogleImagesDownloader():
 
     async def format_image_meta_data(self, obj: dict) -> dict:
         """
-
+        Formats image meta dates.
         """
         formatted_object = {}
         formatted_object['image_format'] = obj['ity']
@@ -251,9 +257,9 @@ class GoogleImagesDownloader():
         formatted_object['image_thumbnail_url'] = obj['tu']
         return formatted_object
 
-    async def get_next_item(self, page: str) -> str:
+    async def get_next_item(self, page: str) -> tuple:
         """
-
+        Gets next image from page.
         """
         start_line = page.find('rg_meta notranslate')
         if start_line == -1:  # If no links are found then give an error!
@@ -270,14 +276,14 @@ class GoogleImagesDownloader():
                 object_decode = bytes(object_raw, "utf-8").decode("unicode_escape")
                 final_object = json.loads(object_decode)
 
-            except Exception:
+            except (UnicodeError, json.JSONDecodeError):
                 final_object = ""
 
         return final_object, end_object
 
     async def get_all_items(self, page: str) -> asyncio.coroutine:
         """
-
+        Gets all images from page.
         """
         tasks = []
         count = 1
@@ -303,7 +309,10 @@ class GoogleImagesDownloader():
                 color = f' - {self.argument["color"]}' if self.argument['color'] else ''
                 prefix = f'{self.argument["prefix_keywords"]} ' if self.argument['prefix_keywords'] else ''
                 suffix = f' {self.argument["suffix_keywords"]}' if self.argument['suffix_keywords'] else ''
-                sub_dir = f'{prefix}{self.argument["keywords"]}{suffix}{color}'
+                if not self.argument['no_directory']:
+                    sub_dir = f'{prefix}{self.argument["keywords"]}{suffix}{color}'
+                else:
+                    sub_dir = ''
 
                 tasks.append(self.image_download_task(url, sub_dir))
                 count += 1
@@ -314,7 +323,7 @@ class GoogleImagesDownloader():
 
     async def image_download_task(self, url: str, sub_dir: str = '') -> None:
         """
-
+        Downloads image from provided url to provided sub directory.
         """
         url = unquote(url)
         content = await self.download_url_data(url, 'bytes')
@@ -326,7 +335,7 @@ class GoogleImagesDownloader():
 
     async def gather_image_task(self) -> None:
         """
-
+        Downloads all scraped images.
         """
         if self.argument['single_image']:
             await self.image_download_task(self.argument['single_image'])
@@ -344,12 +353,11 @@ class GoogleImagesDownloader():
 
 class DownloadError(Exception):
     """
-
+    Raised when error occurs during download.
     """
     def __init__(self, url, status):
         self.url = url
         self.status = status
-        super().__init__()
 
     def __str__(self):
         return f'***Unable to download {self.url}, HTTP Status Code was {self.status}'
@@ -359,7 +367,7 @@ async def main() -> None:
     """
     Main function of google_image_downloader_async.
     """
-    records, url_parm_json_file = await parse_config()
+    url_parm_json_file, records = await parse_config()
 
     tasks = []
 
