@@ -27,16 +27,17 @@ async def parse_config():
                         metavar='<path>')
 
     parser.add_argument('-k', '--keywords',
+                        default='',
                         help='delimited list input')
     parser.add_argument('-kf', '--keywords_from_file',
                         help='extract list of keywords from a text file',
                         metavar='<path>')
     parser.add_argument('-sk', '--suffix_keywords',
-                        default = '',
+                        default='',
                         help='comma separated additional words added after to main keyword',
                         metavar='<k1,k2...>')
     parser.add_argument('-pk', '--prefix_keywords',
-                        default = '',
+                        default='',
                         help='comma separated additional words added before main keyword',
                         metavar='<k1,k2...>')
     parser.add_argument('-l', '--limit',
