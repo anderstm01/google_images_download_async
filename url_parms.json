@@ -30,6 +30,7 @@
     "format": [
         null,
         {
+            "jpeg": "ift:jpeg",
             "jpg": "ift:jpg",
             "gif": "ift:gif",
             "png": "ift:png",
