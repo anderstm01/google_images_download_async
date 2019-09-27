@@ -185,10 +185,10 @@ async def parse_config():
     parser.add_argument('-sil', '--silent_mode',
                         action="store_true",
                         help="Remains silent. Does not print notification messages on the terminal")
-    # parser.add_argument('-is', '--save_source',
-    #                     help='''creates a text file containing a list of downloaded images
-    #                         along with source page url''',
-    #                     metavar='<path>')
+    parser.add_argument('-is', '--save_source',
+                        help='''creates a text file containing a list of downloaded images
+                            along with source page url''',
+                        metavar='<path>')
 
     args, unknown_args = parser.parse_known_args()
 
