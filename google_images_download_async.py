@@ -149,13 +149,22 @@ class GoogleImagesDownloader():
 
         if sub_dir:
             file_path = self.main_directory.joinpath(sub_dir).joinpath(filename)
+
         else:
             file_path = self.main_directory.joinpath(filename)
+
+        if self.argument['save_source']:
+            save_source = self.main_directory.joinpath(self.argument["save_source"])
+
+            async with aiofiles.open(save_source, 'a') as file:
+                await file.write(f'{file_path}\t{url}\n')
 
         async with aiofiles.open(file_path, 'wb') as file:
             if not self.argument['silent_mode']:
                 print(f'Begin writing to {filename}')
+
             await file.write(content)
+
             if not self.argument['silent_mode']:
                 print(f'Finished writing to {filename}')
 
@@ -173,17 +182,21 @@ class GoogleImagesDownloader():
         for parm in params:
             params[parm][0] = self.argument[parm]
 
+
         for value in params.values():
+
             if value[0]:
                 ext_param = value[1][value[0]]
-                # counter will tell if it is first param added or not
+
                 if counter == 0:
                     # add it to the built url
                     built_url = built_url + ext_param
                     counter += 1
+
                 else:
                     built_url = built_url + ',' + ext_param
                     counter += 1
+
 
         params = lang_url+built_url+exact_size+time_range
 
