@@ -127,10 +127,11 @@ async def parse_config():
     # parser.add_argument('-e', '--extract_metadata',
     #                     action="store_true",
     #                     help="Dumps all the logs into a text file")
-    # parser.add_argument('-st', '--socket_timeout',
-    #                     type=float,
-    #                     help="Connection timeout waiting for the image to download",
-    #                     metavar='<n>')
+    parser.add_argument('-st', '--socket_timeout',
+                        default=5,
+                        type=float,
+                        help="Connection timeout waiting for the image to download",
+                        metavar='<n>')
     # parser.add_argument('-th', '--thumbnail',
     #                     action="store_true",
     #                     help="Downloads image thumbnail along with the actual image")
