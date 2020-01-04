@@ -85,7 +85,10 @@ class GoogleImagesDownloader():
             headers['User-Agent'] = ('Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 ' +
                                      '(KHTML, like Gecko) Chrome/41.0.2228.0 Safari/537.36')
 
-            timeout = aiohttp.ClientTimeout(total=5.0)
+            if self.argument['socket_timeout'] < 2:
+                timeout = aiohttp.ClientTimeout(total=2)
+            else:
+                timeout = aiohttp.ClientTimeout(total=self.argument['socket_timeout'])
 
             async with aiohttp.ClientSession(headers=headers, timeout=timeout) as session:
                 async with session.get(url) as resp:
@@ -243,15 +246,23 @@ class GoogleImagesDownloader():
 
         content = await self.download_url_data(url, 'text')
 
-        start_content = content.find('AMhZZ')
-        end_content = content.find('&', start_content)
-        url = f'https://www.google.com/search?tbs=sbi:{content[start_content:end_content]}&site=search&sa=X'
+        if content != None:
+            start_content = content.find('AMhZZ')
+            end_content = content.find('&', start_content)
+            url = f'https://www.google.com/search?tbs=sbi:{content[start_content:end_content]}&site=search&sa=X'
+        else:
+            print('***Unable to complete similar image search')
+            search_term = ''
 
         content = await self.download_url_data(url, 'text')
 
-        start_content = content.find('/search?sa=X&amp;q=')
-        end_content = content.find(';', start_content + 19)
-        search_term = content[start_content + 19:end_content]
+        if content != None:
+            start_content = content.find('/search?sa=X&amp;q=')
+            end_content = content.find(';', start_content + 19)
+            search_term = content[start_content + 19:end_content]
+        else:
+            print('***Unable to complete similar image search')
+            search_term = ''
 
         return search_term
 
