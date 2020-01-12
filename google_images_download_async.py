@@ -9,6 +9,7 @@ import os
 import time
 from pathlib import Path
 from urllib.parse import unquote, quote
+import csv
 
 # Third party imports:
 import aiofiles
@@ -18,45 +19,56 @@ import aiohttp
 from config_parser import parse_config
 
 
-async def expand_arguments(arguments: dict) -> list:
+async def init_new_argument(expanded_arguments: list, arguments: dict) -> list:
     """
-    Reads the arguments obtained from parse_config() and splits
-    them into a list dict objects that can be processed concurrently.
+    This removes duplicate search terms by copying and initing them
+    to their defaults before they are set in expand_arguments().
     """
-    async def expand_arguments_helper(expanded_arguments: list, arguments: dict) -> list:
-        """
-        This removes duplicate search terms by copying and initing them
-        to their defaults before they are set in expand_arguments().
-        """
-        expanded_arguments.append(arguments.copy())
-        expanded_arguments[-1]['url'] = ''
-        expanded_arguments[-1]['similar_images'] = ''
-        expanded_arguments[-1]['prefix_keywords'] = ''
-        expanded_arguments[-1]['keywords'] = ''
-        expanded_arguments[-1]['suffix_keywords'] = ''
-        return expanded_arguments
+    expanded_arguments.append(arguments.copy())
+    expanded_arguments[-1]['url'] = ''
+    expanded_arguments[-1]['similar_images'] = ''
+    expanded_arguments[-1]['prefix_keywords'] = ''
+    expanded_arguments[-1]['keywords'] = ''
+    expanded_arguments[-1]['suffix_keywords'] = ''
 
-    expanded_arguments = []
+    return expanded_arguments
+
+async def expand_search_words(expanded_arguments: list, arguments: dict) -> list:
+    """
+    """
 
     prefixes = [str(prefix) for prefix in arguments['prefix_keywords'].split(',')]
     suffixes = [str(suffix) for suffix in arguments['suffix_keywords'].split(',')]
     keywords = [str(keyword) for keyword in arguments['keywords'].split(',')]
 
-    if arguments['url']:
-        expanded_arguments = await expand_arguments_helper(expanded_arguments, arguments)
-        expanded_arguments[-1]['url'] = arguments['url']
-
-    if arguments['similar_images']:
-        expanded_arguments = await expand_arguments_helper(expanded_arguments, arguments)
-        expanded_arguments[-1]['similar_images'] = arguments['similar_images']
-
     for prefix in prefixes:
         for suffix in suffixes:
             for keyword in keywords:
-                expanded_arguments = await expand_arguments_helper(expanded_arguments, arguments)
+                expanded_arguments = await init_new_argument(expanded_arguments, arguments)
                 expanded_arguments[-1]['prefix_keywords'] = prefix
                 expanded_arguments[-1]['keywords'] = keyword
                 expanded_arguments[-1]['suffix_keywords'] = suffix
+
+    return expanded_arguments
+
+async def expand_arguments(arguments: dict) -> list:
+    """
+    Reads the arguments obtained from parse_config() and splits
+    them into a list dict objects that can be processed concurrently.
+    """
+
+    expanded_arguments = []
+
+    if arguments['url']:
+        expanded_arguments = await init_new_argument(expanded_arguments, arguments)
+        expanded_arguments[-1]['url'] = arguments['url']
+
+    if arguments['similar_images']:
+        expanded_arguments = await init_new_argument(expanded_arguments, arguments)
+        expanded_arguments[-1]['similar_images'] = arguments['similar_images']
+
+    if arguments['keywords'] or arguments['prefix_keywords'] or arguments['suffix_keywords']:
+        expanded_arguments = await expand_search_words(expanded_arguments, arguments)
 
     return expanded_arguments
 
@@ -71,27 +83,27 @@ class GoogleImagesDownloader():
         self.url_parm_json_file = url_parm_json_file
         self.argument = argument
 
-    async def download_url_data(self, url: str, request_type: str) -> bytes or str:
+    async def download_url_data(self, google_url: str, request_type: str) -> bytes or str:
         """
         Downloads data from provided url.
         """
         await asyncio.sleep(0.1)
 
+        if not self.argument['silent_mode']:
+            print(f'Begin downloading {google_url}')
+
+        headers = {}
+        headers['User-Agent'] = ('Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 ' +
+                                    '(KHTML, like Gecko) Chrome/41.0.2228.0 Safari/537.36')
+
+        if self.argument['socket_timeout'] < 2:
+            timeout = aiohttp.ClientTimeout(total=2)
+        else:
+            timeout = aiohttp.ClientTimeout(total=self.argument['socket_timeout'])
+
         try:
-            if not self.argument['silent_mode']:
-                print(f'Begin downloading {url}')
-
-            headers = {}
-            headers['User-Agent'] = ('Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 ' +
-                                     '(KHTML, like Gecko) Chrome/41.0.2228.0 Safari/537.36')
-
-            if self.argument['socket_timeout'] < 2:
-                timeout = aiohttp.ClientTimeout(total=2)
-            else:
-                timeout = aiohttp.ClientTimeout(total=self.argument['socket_timeout'])
-
             async with aiohttp.ClientSession(headers=headers, timeout=timeout) as session:
-                async with session.get(url) as resp:
+                async with session.get(google_url) as resp:
                     if resp.status == 200:
                         if request_type == 'bytes':
                             content = await resp.read()
@@ -100,11 +112,11 @@ class GoogleImagesDownloader():
                             content = await resp.text()
 
                         if not self.argument['silent_mode']:
-                            print(f'Finished downloading {url}')
+                            print(f'Finished downloading {google_url}')
 
                         return content
 
-                    raise DownloadError(url, resp.status)
+                    raise DownloadError(google_url, resp.status)
 
         except DownloadError as error:
             if not self.argument['silent_mode']:
@@ -112,7 +124,7 @@ class GoogleImagesDownloader():
 
         except aiohttp.client_exceptions.ClientConnectorError as error:
             if not self.argument['silent_mode']:
-                print(f'***Unable to Connect to Client {error} URL: {url}')
+                print(f'***Unable to Connect to Client {error} URL: {google_url}')
 
         except aiohttp.client_exceptions.InvalidURL as error:
             if not self.argument['silent_mode']:
@@ -120,23 +132,27 @@ class GoogleImagesDownloader():
 
         except asyncio.TimeoutError:
             if not self.argument['silent_mode']:
-                print(f'Timeout downloading: {url}')
+                print(f'Timeout downloading: {google_url}')
 
-    async def write_to_file(self, url: str, content: bytes, sub_dir: str) -> None:
+    async def make_directory(self, sub_dir: str) -> None:
         """
-        Writes data to file.
         """
         try:
             if sub_dir:
+                file_path = self.main_directory.joinpath(sub_dir)
                 os.makedirs(self.main_directory.joinpath(sub_dir))
             else:
+                file_path = self.main_directory
                 os.makedirs(self.main_directory)
         except OSError as error:
             if error.errno == 17:
                 pass
 
-        filename = str(url[(url.rfind('/')) + 1:])
+        return file_path
 
+    async def generate_file_name(self, filename: str) -> str:
+        """
+        """
         if '?' in filename:
             filename = filename[:filename.find('?')]
 
@@ -150,17 +166,25 @@ class GoogleImagesDownloader():
             filename, ext = filename.rsplit('.', 1)
             filename = f'{filename} {self.argument["suffix"]}.{ext}'
 
-        if sub_dir:
-            file_path = self.main_directory.joinpath(sub_dir).joinpath(filename)
+        return filename
 
-        else:
-            file_path = self.main_directory.joinpath(filename)
+    async def write_download_log(self, image_url: str, file_path: str) -> None:
+        """
+        """
+        save_source = self.main_directory.joinpath(self.argument["save_source"])
 
-        if self.argument['save_source']:
-            save_source = self.main_directory.joinpath(self.argument["save_source"])
+        async with aiofiles.open(save_source, 'a') as file:
+            await file.write(f'{file_path}\t{image_url}\n')
 
-            async with aiofiles.open(save_source, 'a') as file:
-                await file.write(f'{file_path}\t{url}\n')
+    async def write_to_file(self, image_url: str, content: bytes, sub_dir: str) -> None:
+        """
+        Writes data to file.
+        """
+        filename = await self.generate_file_name(str(image_url[(image_url.rfind('/')) + 1:]))
+
+        directory = await self.make_directory(sub_dir)
+
+        file_path = directory.joinpath(filename)
 
         async with aiofiles.open(file_path, 'wb') as file:
             if not self.argument['silent_mode']:
@@ -170,6 +194,9 @@ class GoogleImagesDownloader():
 
             if not self.argument['silent_mode']:
                 print(f'Finished writing to {filename}')
+
+        if self.argument['save_source']:
+            await self.write_download_log(image_url, file_path)
 
     async def build_url_parameters(self) -> str:
         """
@@ -205,17 +232,8 @@ class GoogleImagesDownloader():
 
         return params
 
-    async def build_search_url(self, params: str) -> str:
-        """
-        Creates search url from provided params.
-        """
-        # check safe_search
-        safe_search_string = "&safe=active"
-
-        if self.argument['similar_images']:
-            search_term = await self.similar_images()
-        else:
-            search_term = self.argument["keywords"]
+    async def build_keywords_term(self) -> str:
+        search_term = self.argument["keywords"]
 
         if self.argument["prefix_keywords"]:
             search_term = f'{self.argument["prefix_keywords"]} {search_term}'
@@ -223,46 +241,74 @@ class GoogleImagesDownloader():
         if self.argument["suffix_keywords"]:
             search_term = f'{search_term} {self.argument["suffix_keywords"]}'
 
-        if self.argument['url']:
-            url = self.argument['url']
+        return search_term
 
+    async def build_search_term(self) -> str:
+        """
+        """
+        search_term = ''
+
+        if self.argument['similar_images']:
+            search_term = await self.build_similar_images_search_term()
+
+        if self.argument['keywords']:
+            search_term = await self.build_keywords_term()
+
+        return search_term
+
+    async def build_search_url(self, params: str) -> str:
+        """
+        Creates search url from provided params.
+        """
+        # check safe_search
+        safe_search_string = "&safe=active"
+
+        if self.argument['url']:
+            google_url = self.argument['url']
         else:
-            url = (f'https://www.google.com/search?q={quote(search_term)}' +
+            search_term =  await self.build_search_term()
+
+            google_url = (f'https://www.google.com/search?q={quote(search_term)}' +
                    f'&espv=2&biw=1366&bih=667&site=webhp&source=lnms&tbm=isch{params}' +
                    '&sa=X&ei=XosDVaCXD8TasATItgE&ved=0CAcQ_AUoAg')
 
         # safe search check
         if self.argument['safe_search']:
-            url = url + safe_search_string
+            google_url = google_url + safe_search_string
 
-        return url
+        return google_url
 
-    async def similar_images(self):
+    async def build_similar_images_search_term(self):
         """
 
         """
-        url = (f'https://www.google.com/searchbyimage?' +
+        google_similar_image_url = (f'https://www.google.com/searchbyimage?' +
                f'site=search&sa=X&image_url={self.argument["similar_images"]}')
 
-        content = await self.download_url_data(url, 'text')
+        if not self.argument['silent_mode']:
+            print(f'Begin downloading images similar to {google_similar_image_url}')
 
-        if content != None:
+        try:
+            content = await self.download_url_data(google_similar_image_url, 'text')
+        # if content != None:
             start_content = content.find('AMhZZ')
             end_content = content.find('&', start_content)
-            url = f'https://www.google.com/search?tbs=sbi:{content[start_content:end_content]}&site=search&sa=X'
-        else:
-            print('***Unable to complete similar image search')
-            search_term = ''
+            google_url = f'https://www.google.com/search?tbs=sbi:{content[start_content:end_content]}&site=search&sa=X'
+        # else:
+            # print('***Unable to complete similar image search')
+            # search_term = ''
 
-        content = await self.download_url_data(url, 'text')
+            content = await self.download_url_data(google_url, 'text')
 
-        if content != None:
+        # if content != None:
             start_content = content.find('/search?sa=X&amp;q=')
             end_content = content.find(';', start_content + 19)
             search_term = content[start_content + 19:end_content]
-        else:
-            print('***Unable to complete similar image search')
+        # else:
+        except Exception as error:
+            print(f'***Unable to complete similar image search: {error}')
             search_term = ''
+            pass
 
         return search_term
 
@@ -279,6 +325,7 @@ class GoogleImagesDownloader():
         formatted_object['image_host'] = obj['rh']
         formatted_object['image_source'] = obj['ru']
         formatted_object['image_thumbnail_url'] = obj['tu']
+
         return formatted_object
 
     async def get_next_item(self, page: str) -> tuple:
@@ -305,6 +352,16 @@ class GoogleImagesDownloader():
 
         return final_object, end_object
 
+    async def set_directory(self) -> str:
+        '''
+        '''
+        color  = f' - {self.argument["color"]}' if self.argument['color'] else ''
+        prefix = f'{self.argument["prefix_keywords"]} ' if self.argument['prefix_keywords'] else ''
+        suffix = f' {self.argument["suffix_keywords"]}' if self.argument['suffix_keywords'] else ''
+        sub_dir = f'{prefix}{self.argument["keywords"]}{suffix}{color}' if not self.argument['no_directory'] else ''
+
+        return sub_dir
+
     async def get_all_items(self, page: str) -> asyncio.coroutine:
         """
         Gets all images from page.
@@ -328,51 +385,46 @@ class GoogleImagesDownloader():
 
             else:
                 formated_image_meta_data = await self.format_image_meta_data(image_meta_data)
-                url = formated_image_meta_data['image_link']
+                image_url = formated_image_meta_data['image_link']
+                sub_dir = await self.set_directory()
 
-                color = f' - {self.argument["color"]}' if self.argument['color'] else ''
-                prefix = f'{self.argument["prefix_keywords"]} ' if self.argument['prefix_keywords'] else ''
-                suffix = f' {self.argument["suffix_keywords"]}' if self.argument['suffix_keywords'] else ''
-                if not self.argument['no_directory']:
-                    sub_dir = f'{prefix}{self.argument["keywords"]}{suffix}{color}'
-                else:
-                    sub_dir = ''
-
-                tasks.append(self.image_download_task(url, sub_dir))
+                tasks.append(self.download_images(image_url, sub_dir))
                 count += 1
 
                 page = page[end_content:]
 
         return tasks
 
-    async def image_download_task(self, url: str, sub_dir: str = '') -> None:
+    async def download_images(self, image_url: str, sub_dir: str = '') -> None:
         """
         Downloads image from provided url to provided sub directory.
         """
-        url = unquote(url)
-        content = await self.download_url_data(url, 'bytes')
+        unquoted_image_url = unquote(image_url)
+        content = await self.download_url_data(unquoted_image_url, 'bytes')
+
         if content:
-            await self.write_to_file(url, content, sub_dir)
+            await self.write_to_file(unquoted_image_url, content, sub_dir)
         else:
             if not self.argument['silent_mode']:
-                print(f'***File not write: {url}')
+                print(f'***File not write: {unquoted_image_url}')
 
-    async def gather_image_task(self) -> None:
+    async def gather_images(self) -> None:
         """
         Downloads all scraped images.
         """
         if self.argument['single_image']:
-            await self.image_download_task(self.argument['single_image'])
+            await self.download_images(self.argument['single_image'])
 
         else:
             url_params = await self.build_url_parameters()
 
-            url = await self.build_search_url(url_params)
+            google_url = await self.build_search_url(url_params)
 
-            raw_html = await self.download_url_data(url, 'text')
+            raw_html = await self.download_url_data(google_url, 'text')
 
-            tasks = await self.get_all_items(raw_html)
-            await asyncio.gather(*tasks)
+            if raw_html != None:
+                tasks = await self.get_all_items(raw_html)
+                await asyncio.gather(*tasks)
 
 
 class DownloadError(Exception):
@@ -400,12 +452,12 @@ async def main() -> None:
     for record in records:
         if record['single_image']:
             gid = GoogleImagesDownloader(url_parm_json_file, record)
-            tasks.append(gid.gather_image_task())
+            tasks.append(gid.gather_images())
         else:
             expanded_arguments = await expand_arguments(record)
             for argument in expanded_arguments:
                 gid = GoogleImagesDownloader(url_parm_json_file, argument)
-                tasks.append(gid.gather_image_task())
+                tasks.append(gid.gather_images())
 
     await asyncio.gather(*tasks)
 
