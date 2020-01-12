@@ -19,6 +19,20 @@ import aiohttp
 from config_parser import parse_config
 
 
+async def read_keywords_file(keywords_file: str) -> str:
+    """
+    """
+    keywords_file_allowed_extensions = ('.csv','.txt')
+    keywords = []
+
+    if any(extension in keywords_file for extension in keywords_file_allowed_extensions):
+        with open(keywords_file) as csv_file:
+            keyword_reader = csv.reader(csv_file, delimiter=',')
+            for row in keyword_reader:
+                keywords += list(row)
+
+    return ','.join(keywords).strip()
+
 async def init_new_argument(expanded_arguments: list, arguments: dict) -> list:
     """
     This removes duplicate search terms by copying and initing them
@@ -30,6 +44,7 @@ async def init_new_argument(expanded_arguments: list, arguments: dict) -> list:
     expanded_arguments[-1]['prefix_keywords'] = ''
     expanded_arguments[-1]['keywords'] = ''
     expanded_arguments[-1]['suffix_keywords'] = ''
+    expanded_arguments[-1]['keywords_from_file'] = ''
 
     return expanded_arguments
 
@@ -67,6 +82,9 @@ async def expand_arguments(arguments: dict) -> list:
         expanded_arguments = await init_new_argument(expanded_arguments, arguments)
         expanded_arguments[-1]['similar_images'] = arguments['similar_images']
 
+    if arguments['keywords_from_file']:
+        arguments['keywords'] += ',' + await read_keywords_file(arguments['keywords_from_file'])
+
     if arguments['keywords'] or arguments['prefix_keywords'] or arguments['suffix_keywords']:
         expanded_arguments = await expand_search_words(expanded_arguments, arguments)
 
@@ -79,7 +97,7 @@ class GoogleImagesDownloader():
     """
     def __init__(self, url_parm_json_file, argument):
         self.main_directory = Path(argument['output_directory'] or "Downloads")
-        self.extensions = (".jpg", ".jpeg", ".gif", ".png", ".bmp", ".svg", ".webp", ".ico")
+        self.image_file_allowed_extensions = (".jpg", ".jpeg", ".gif", ".png", ".bmp", ".svg", ".webp", ".ico")
         self.url_parm_json_file = url_parm_json_file
         self.argument = argument
 
@@ -156,7 +174,7 @@ class GoogleImagesDownloader():
         if '?' in filename:
             filename = filename[:filename.find('?')]
 
-        if not any(extension in filename for extension in self.extensions):
+        if not any(extension in filename for extension in self.image_file_allowed_extensions):
             filename = f'{filename}.jpg'
 
         if self.argument["prefix"]:
