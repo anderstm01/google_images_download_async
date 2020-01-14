@@ -9,7 +9,6 @@ import os
 import time
 from pathlib import Path
 from urllib.parse import unquote, quote
-import csv
 
 # Third party imports:
 import aiofiles
@@ -18,77 +17,88 @@ import aiohttp
 # Local imports:
 from config_parser import parse_config
 
-
-async def read_keywords_file(keywords_file: str) -> str:
+class ArgumentExpander():
     """
     """
-    keywords_file_allowed_extensions = ('.csv','.txt')
-    keywords = []
+    def __init__(self, arguments: dict):
+        self.arguments = arguments
 
-    if any(extension in keywords_file for extension in keywords_file_allowed_extensions):
-        with open(keywords_file) as csv_file:
-            keyword_reader = csv.reader(csv_file, delimiter=',')
-            for row in keyword_reader:
-                keywords += list(row)
+    async def read_keywords_file(self, keywords_file: str) -> str:
+        """
+        """
+        keywords_file_allowed_extensions = ('.csv','.txt')
+        keywords = ''
 
-    return ','.join(keywords).strip()
+        if any(extension in keywords_file for extension in keywords_file_allowed_extensions):
+            try:
+                with open(keywords_file) as file:
+                    keyword_reader = file.read()
+                    for row in keyword_reader:
+                        keywords += str(row).strip()
+            except FileNotFoundError as error:
+                print(f'***Unable to import keywords file: {keywords_file} {error}')
+        else:
+            print(f'***Unable to import keywords file: {keywords_file}',
+            f'file extension not valid use: {keywords_file_allowed_extensions}')
 
-async def init_new_argument(expanded_arguments: list, arguments: dict) -> list:
-    """
-    This removes duplicate search terms by copying and initing them
-    to their defaults before they are set in expand_arguments().
-    """
-    expanded_arguments.append(arguments.copy())
-    expanded_arguments[-1]['url'] = ''
-    expanded_arguments[-1]['similar_images'] = ''
-    expanded_arguments[-1]['prefix_keywords'] = ''
-    expanded_arguments[-1]['keywords'] = ''
-    expanded_arguments[-1]['suffix_keywords'] = ''
-    expanded_arguments[-1]['keywords_from_file'] = ''
+        return keywords
 
-    return expanded_arguments
+    async def init_new_argument(self, expanded_arguments: list) -> list:
+        """
+        This removes duplicate search terms by copying and initing them
+        to their defaults before they are set in expand_arguments().
+        """
+        expanded_arguments.append(self.arguments.copy())
+        expanded_arguments[-1]['url'] = ''
+        expanded_arguments[-1]['similar_images'] = ''
+        expanded_arguments[-1]['prefix_keywords'] = ''
+        expanded_arguments[-1]['keywords'] = ''
+        expanded_arguments[-1]['suffix_keywords'] = ''
+        expanded_arguments[-1]['keywords_from_file'] = ''
 
-async def expand_search_words(expanded_arguments: list, arguments: dict) -> list:
-    """
-    """
+        return expanded_arguments
 
-    prefixes = [str(prefix) for prefix in arguments['prefix_keywords'].split(',')]
-    suffixes = [str(suffix) for suffix in arguments['suffix_keywords'].split(',')]
-    keywords = [str(keyword) for keyword in arguments['keywords'].split(',')]
+    async def expand_search_words(self, expanded_arguments: list) -> list:
+        """
+        """
 
-    for prefix in prefixes:
-        for suffix in suffixes:
-            for keyword in keywords:
-                expanded_arguments = await init_new_argument(expanded_arguments, arguments)
-                expanded_arguments[-1]['prefix_keywords'] = prefix
-                expanded_arguments[-1]['keywords'] = keyword
-                expanded_arguments[-1]['suffix_keywords'] = suffix
+        prefixes = [str(prefix) for prefix in self.arguments['prefix_keywords'].split(',')]
+        suffixes = [str(suffix) for suffix in self.arguments['suffix_keywords'].split(',')]
+        keywords = [str(keyword) for keyword in self.arguments['keywords'].split(',')]
 
-    return expanded_arguments
+        for prefix in prefixes:
+            for suffix in suffixes:
+                for keyword in keywords:
+                    expanded_arguments = await self.init_new_argument(expanded_arguments)
+                    expanded_arguments[-1]['prefix_keywords'] = prefix
+                    expanded_arguments[-1]['keywords'] = keyword
+                    expanded_arguments[-1]['suffix_keywords'] = suffix
 
-async def expand_arguments(arguments: dict) -> list:
-    """
-    Reads the arguments obtained from parse_config() and splits
-    them into a list dict objects that can be processed concurrently.
-    """
+        return expanded_arguments
 
-    expanded_arguments = []
+    async def expand_arguments(self) -> list:
+        """
+        Reads the arguments obtained from parse_config() and splits
+        them into a list dict objects that can be processed concurrently.
+        """
 
-    if arguments['url']:
-        expanded_arguments = await init_new_argument(expanded_arguments, arguments)
-        expanded_arguments[-1]['url'] = arguments['url']
+        expanded_arguments = []
 
-    if arguments['similar_images']:
-        expanded_arguments = await init_new_argument(expanded_arguments, arguments)
-        expanded_arguments[-1]['similar_images'] = arguments['similar_images']
+        if self.arguments['url']:
+            expanded_arguments = await self.init_new_argument(expanded_arguments)
+            expanded_arguments[-1]['url'] = self.arguments['url']
 
-    if arguments['keywords_from_file']:
-        arguments['keywords'] += ',' + await read_keywords_file(arguments['keywords_from_file'])
+        if self.arguments['similar_images']:
+            expanded_arguments = await self.init_new_argument(expanded_arguments)
+            expanded_arguments[-1]['similar_images'] = self.arguments['similar_images']
 
-    if arguments['keywords'] or arguments['prefix_keywords'] or arguments['suffix_keywords']:
-        expanded_arguments = await expand_search_words(expanded_arguments, arguments)
+        if self.arguments['keywords_from_file']:
+            self.arguments['keywords'] += ',' + await self.read_keywords_file(self.arguments['keywords_from_file'])
 
-    return expanded_arguments
+        if self.arguments['keywords'] or self.arguments['prefix_keywords'] or self.arguments['suffix_keywords']:
+            expanded_arguments = await self.expand_search_words(expanded_arguments)
+
+        return expanded_arguments
 
 
 class GoogleImagesDownloader():
@@ -296,7 +306,7 @@ class GoogleImagesDownloader():
 
         return google_url
 
-    async def build_similar_images_search_term(self):
+    async def build_similar_images_search_term(self) -> str:
         """
 
         """
@@ -469,13 +479,14 @@ async def main() -> None:
 
     for record in records:
         if record['single_image']:
-            gid = GoogleImagesDownloader(url_parm_json_file, record)
-            tasks.append(gid.gather_images())
+            google_image_downloader = GoogleImagesDownloader(url_parm_json_file, record)
+            tasks.append(google_image_downloader.gather_images())
         else:
-            expanded_arguments = await expand_arguments(record)
+            argument_expander = ArgumentExpander(record)
+            expanded_arguments = await argument_expander.expand_arguments()
             for argument in expanded_arguments:
-                gid = GoogleImagesDownloader(url_parm_json_file, argument)
-                tasks.append(gid.gather_images())
+                google_image_downloader = GoogleImagesDownloader(url_parm_json_file, argument)
+                tasks.append(google_image_downloader.gather_images())
 
     await asyncio.gather(*tasks)
 
