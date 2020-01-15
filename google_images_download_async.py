@@ -108,8 +108,10 @@ class GoogleImagesDownloader():
     def __init__(self, url_parm_json_file, argument):
         self.main_directory = Path(argument['output_directory'] or "Downloads")
         self.image_file_allowed_extensions = (".jpg", ".jpeg", ".gif", ".png", ".bmp", ".svg", ".webp", ".ico")
+        self.file_size_units = ('bytes', 'KB', 'MB', 'GB', 'TB')
         self.url_parm_json_file = url_parm_json_file
         self.argument = argument
+        self.sub_dir = ''
 
     async def download_url_data(self, google_url: str, request_type: str) -> bytes or str:
         """
@@ -117,8 +119,7 @@ class GoogleImagesDownloader():
         """
         await asyncio.sleep(0.1)
 
-        if not self.argument['silent_mode']:
-            print(f'Begin downloading {google_url}')
+        await self.write_to_sysout(f'Begin downloading {google_url}')
 
         headers = {}
         headers['User-Agent'] = ('Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 ' +
@@ -135,40 +136,70 @@ class GoogleImagesDownloader():
                     if resp.status == 200:
                         if request_type == 'bytes':
                             content = await resp.read()
-
                         else:
                             content = await resp.text()
 
-                        if not self.argument['silent_mode']:
-                            print(f'Finished downloading {google_url}')
+                        await self.write_to_sysout(f'Finished downloading {google_url}')
 
                         return content
 
                     raise DownloadError(google_url, resp.status)
 
         except DownloadError as error:
-            if not self.argument['silent_mode']:
-                print(error)
+            await self.write_to_sysout(error)
 
         except aiohttp.client_exceptions.ClientConnectorError as error:
-            if not self.argument['silent_mode']:
-                print(f'***Unable to Connect to Client {error} URL: {google_url}')
+            await self.write_to_sysout(f'***Unable to Connect to Client {error} URL: {google_url}')
 
         except aiohttp.client_exceptions.InvalidURL as error:
-            if not self.argument['silent_mode']:
-                print(f'***Invalid URL: {error}')
+            await self.write_to_sysout(f'***Invalid URL: {error}')
 
         except asyncio.TimeoutError:
-            if not self.argument['silent_mode']:
-                print(f'Timeout downloading: {google_url}')
+            await self.write_to_sysout(f'Timeout downloading: {google_url}')
 
-    async def make_directory(self, sub_dir: str) -> None:
+    async def write_to_sysout(self, message: str) -> None:
+        """
+        """
+        if not self.argument['silent_mode']:
+            print(message)
+
+    async def get_file_size(self, file_path: str) -> str:
         """
         """
         try:
-            if sub_dir:
-                file_path = self.main_directory.joinpath(sub_dir)
-                os.makedirs(self.main_directory.joinpath(sub_dir))
+            count = 0
+            units = ''
+            file_size = os.path.getsize(file_path)
+
+            while int(file_size) / 1024 >= 1:
+                file_size /= 1024.0
+                count += 1
+
+            units = self.file_size_units[count]
+            file_size_with_units = f'{file_size:.1f} {units}'
+
+        except OSError as error:
+            file_size_with_units = ''
+
+        return file_size_with_units
+
+    async def set_sub_directory(self) -> None:
+        '''
+        '''
+        image  = f'{self.argument["image_directory"]}/' if self.argument['image_directory'] else ''
+        prefix = f'{self.argument["prefix_keywords"]} ' if self.argument['prefix_keywords'] else ''
+        suffix = f' {self.argument["suffix_keywords"]}' if self.argument['suffix_keywords'] else ''
+        color  = f' - {self.argument["color"]}' if self.argument['color'] else ''
+
+        self.sub_dir = f'{image}{prefix}{self.argument["keywords"]}{suffix}{color}' if not self.argument['no_directory'] else ''
+
+    async def make_directory(self) -> None:
+        """
+        """
+        try:
+            if self.sub_dir:
+                file_path = self.main_directory.joinpath(self.sub_dir)
+                os.makedirs(self.main_directory.joinpath(self.sub_dir))
             else:
                 file_path = self.main_directory
                 os.makedirs(self.main_directory)
@@ -204,24 +235,24 @@ class GoogleImagesDownloader():
         async with aiofiles.open(save_source, 'a') as file:
             await file.write(f'{file_path}\t{image_url}\n')
 
-    async def write_to_file(self, image_url: str, content: bytes, sub_dir: str) -> None:
+    async def write_to_file(self, image_url: str, content: bytes) -> None:
         """
         Writes data to file.
         """
         filename = await self.generate_file_name(str(image_url[(image_url.rfind('/')) + 1:]))
 
-        directory = await self.make_directory(sub_dir)
+        directory = await self.make_directory()
 
         file_path = directory.joinpath(filename)
 
         async with aiofiles.open(file_path, 'wb') as file:
-            if not self.argument['silent_mode']:
-                print(f'Begin writing to {filename}')
+            await self.write_to_sysout(f'Begin writing to {filename}')
 
             await file.write(content)
 
-            if not self.argument['silent_mode']:
-                print(f'Finished writing to {filename}')
+            file_size = await self.get_file_size(file_path) if self.argument['print_size'] else ''
+
+            await self.write_to_sysout(f'Finished writing to {filename} {file_size}')
 
         if self.argument['save_source']:
             await self.write_download_log(image_url, file_path)
@@ -234,40 +265,29 @@ class GoogleImagesDownloader():
         time_range = ''
         exact_size = ''
         built_url = "&tbs="
-        counter = 0
 
         params = self.url_parm_json_file.copy()
+
         for parm in params:
             params[parm][0] = self.argument[parm]
 
-
-        for value in params.values():
-
-            if value[0]:
-                ext_param = value[1][value[0]]
-
-                if counter == 0:
-                    # add it to the built url
-                    built_url = built_url + ext_param
-                    counter += 1
-
-                else:
-                    built_url = built_url + ',' + ext_param
-                    counter += 1
-
+        for count, parm_value in enumerate(params.values()):
+            if parm_value[0]:
+                ext_param = parm_value[1][parm_value[0]]
+                built_url += ext_param if count == 0 else f',{ext_param}'
 
         params = lang_url+built_url+exact_size+time_range
 
         return params
 
-    async def build_keywords_term(self) -> str:
-        search_term = self.argument["keywords"]
+    async def build_keywords_search_term(self) -> str:
+        """
+        """
+        keyword = self.argument['keywords'] if self.argument['keywords'] else ''
+        prefix = self.argument['prefix_keywords'] if self.argument['prefix_keywords'] else ''
+        suffix = self.argument['suffix_keywords'] if self.argument['suffix_keywords'] else ''
 
-        if self.argument["prefix_keywords"]:
-            search_term = f'{self.argument["prefix_keywords"]} {search_term}'
-
-        if self.argument["suffix_keywords"]:
-            search_term = f'{search_term} {self.argument["suffix_keywords"]}'
+        search_term = f'{prefix} {keyword} {suffix}'
 
         return search_term
 
@@ -275,12 +295,13 @@ class GoogleImagesDownloader():
         """
         """
         search_term = ''
+        specific_site = f'+site:{self.argument["specific_site"]}' if self.argument['specific_site'] else ''
 
         if self.argument['similar_images']:
-            search_term = await self.build_similar_images_search_term()
+            search_term = f'{await self.build_similar_images_search_term()}{specific_site}'
 
         if self.argument['keywords']:
-            search_term = await self.build_keywords_term()
+            search_term = f'{await self.build_keywords_search_term()}{specific_site}'
 
         return search_term
 
@@ -313,28 +334,21 @@ class GoogleImagesDownloader():
         google_similar_image_url = (f'https://www.google.com/searchbyimage?' +
                f'site=search&sa=X&image_url={self.argument["similar_images"]}')
 
-        if not self.argument['silent_mode']:
-            print(f'Begin downloading images similar to {google_similar_image_url}')
+        await self.write_to_sysout(f'Begin downloading images similar to {google_similar_image_url}')
 
         try:
             content = await self.download_url_data(google_similar_image_url, 'text')
-        # if content != None:
             start_content = content.find('AMhZZ')
             end_content = content.find('&', start_content)
             google_url = f'https://www.google.com/search?tbs=sbi:{content[start_content:end_content]}&site=search&sa=X'
-        # else:
-            # print('***Unable to complete similar image search')
-            # search_term = ''
 
             content = await self.download_url_data(google_url, 'text')
 
-        # if content != None:
             start_content = content.find('/search?sa=X&amp;q=')
             end_content = content.find(';', start_content + 19)
             search_term = content[start_content + 19:end_content]
-        # else:
         except Exception as error:
-            print(f'***Unable to complete similar image search: {error}')
+            await self.write_to_sysout(f'***Unable to complete similar image search: {error}')
             search_term = ''
             pass
 
@@ -362,33 +376,23 @@ class GoogleImagesDownloader():
         """
         start_line = page.find('rg_meta notranslate')
         if start_line == -1:  # If no links are found then give an error!
-            final_object = "no_links"
-            end_object = 0
+            image_meta_data = "no_links"
+            end_content = 0
 
         else:
             start_line = page.find('class="rg_meta notranslate">')
-            start_object = page.find('{', start_line + 1)
-            end_object = page.find('</div>', start_object + 1)
-            object_raw = str(page[start_object:end_object])
+            start_content = page.find('{', start_line + 1)
+            end_content = page.find('</div>', start_content + 1)
+            content_raw = str(page[start_content:end_content])
 
             try:
-                object_decode = bytes(object_raw, "utf-8").decode("unicode_escape")
-                final_object = json.loads(object_decode)
+                content_decode = bytes(content_raw, "utf-8").decode("unicode_escape")
+                image_meta_data = json.loads(content_decode)
 
             except (UnicodeError, json.JSONDecodeError):
-                final_object = ""
+                image_meta_data = ""
 
-        return final_object, end_object
-
-    async def set_directory(self) -> str:
-        '''
-        '''
-        color  = f' - {self.argument["color"]}' if self.argument['color'] else ''
-        prefix = f'{self.argument["prefix_keywords"]} ' if self.argument['prefix_keywords'] else ''
-        suffix = f' {self.argument["suffix_keywords"]}' if self.argument['suffix_keywords'] else ''
-        sub_dir = f'{prefix}{self.argument["keywords"]}{suffix}{color}' if not self.argument['no_directory'] else ''
-
-        return sub_dir
+        return image_meta_data, end_content
 
     async def get_all_items(self, page: str) -> asyncio.coroutine:
         """
@@ -414,16 +418,25 @@ class GoogleImagesDownloader():
             else:
                 formated_image_meta_data = await self.format_image_meta_data(image_meta_data)
                 image_url = formated_image_meta_data['image_link']
-                sub_dir = await self.set_directory()
+                await self.set_sub_directory()
 
-                tasks.append(self.download_images(image_url, sub_dir))
+                if self.argument['print_urls']:
+                    tasks.append(self.print_image_url(image_url))
+                else:
+                    tasks.append(self.download_images(image_url))
+
                 count += 1
 
                 page = page[end_content:]
 
         return tasks
 
-    async def download_images(self, image_url: str, sub_dir: str = '') -> None:
+    async def print_image_url(self, image_url: str) -> None:
+        """
+        """
+        await self.write_to_sysout(f'Image URL: {image_url}')
+
+    async def download_images(self, image_url: str) -> None:
         """
         Downloads image from provided url to provided sub directory.
         """
@@ -431,10 +444,9 @@ class GoogleImagesDownloader():
         content = await self.download_url_data(unquoted_image_url, 'bytes')
 
         if content:
-            await self.write_to_file(unquoted_image_url, content, sub_dir)
+            await self.write_to_file(unquoted_image_url, content)
         else:
-            if not self.argument['silent_mode']:
-                print(f'***File not write: {unquoted_image_url}')
+            await self.write_to_sysout(f'***File not write: {unquoted_image_url}')
 
     async def gather_images(self) -> None:
         """
