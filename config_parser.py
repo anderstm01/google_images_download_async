@@ -55,9 +55,9 @@ async def parse_config():
     parser.add_argument('-o', '--output_directory',
                         help='download images in a specific main directory',
                         metavar='<path>')
-    # parser.add_argument('-i', '--image_directory',
-    #                     help='download images in a specific sub-directory',
-    #                     metavar='<path>')
+    parser.add_argument('-i', '--image_directory',
+                        help='download images in a specific sub-directory',
+                        metavar='<path>')
     parser.add_argument('-n', '--no_directory',
                         help='download images in the main directory but no sub-directory',
                         action="store_true")
@@ -109,15 +109,17 @@ async def parse_config():
     parser.add_argument('-si', '--similar_images',
                         help='downloads images very similar to the image URL you provide',
                         metavar='<url>')
-    # parser.add_argument('-ss', '--specific_site',
-    #                     help='downloads images that are indexed from a specific website',
-    #                     metavar='<url>')
-    # parser.add_argument('-p', '--print_urls',
-    #                     action="store_true",
-    #                     help="Print the URLs of the images")
-    # parser.add_argument('-ps', '--print_size',
-    #                     action="store_true",
-    #                     help="Print the size of the images on disk")
+    parser.add_argument('-ss', '--specific_site',
+                        help='downloads images that are indexed from a specific website',
+                        metavar='<url>')
+    parser.add_argument('-p', '--print_urls',
+                        default=False,
+                        action="store_true",
+                        help="Print the URLs of the images")
+    parser.add_argument('-ps', '--print_size',
+                        default=False,
+                        action="store_true",
+                        help="Print the size of the images on disk")
     # parser.add_argument('-pp', '--print_paths',
     #                     action="store_true",
     #                     help="Prints the list of absolute paths of the images")
