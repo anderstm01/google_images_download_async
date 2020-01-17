@@ -149,19 +149,19 @@ class GoogleImagesDownloader():
                     raise DownloadError(google_url, resp.status)
 
         except DownloadError as error:
-            await self.write_to_sysout(error)
+            await self.write_error_log(error)
 
         except aiohttp.client_exceptions.ClientConnectorError as error:
-            await self.write_to_sysout(f'***Unable to Connect to Client {error} URL: {google_url}')
+            await self.write_error_log(f'***Unable to Connect to Client {error} URL: {google_url}')
 
         except aiohttp.client_exceptions.InvalidURL as error:
-            await self.write_to_sysout(f'***Invalid URL: {error}')
+            await self.write_error_log(f'***Invalid URL: {error}')
 
         except asyncio.TimeoutError:
-            if attempts < 3:
+            if attempts < self.argument['repeat_failure']:
                 await self.download_url_data(google_url, request_type, attempts)
             else:
-                await self.write_to_sysout(f'Timeout downloading: {google_url}')
+                await self.write_error_log(f'Timeout downloading: {google_url}')
 
     async def write_to_sysout(self, message: str) -> None:
         """
@@ -249,33 +249,22 @@ class GoogleImagesDownloader():
 
         abs_path = os.path.abspath(file_path)
 
-        log_record = f'{await self.get_time_stamp()}: {abs_path}\t{image_url}\n'
+        download_log_record = f'{await self.get_time_stamp()}: {abs_path}\t{image_url}\n'
 
         async with aiofiles.open(save_source, 'a') as file:
-            await file.write(log_record)
+            await file.write(download_log_record)
 
-    async def write_to_file(self, image_url: str, content: bytes) -> None:
+    async def write_error_log(self, message: str) -> None:
         """
-        Writes data to file.
         """
-        filename = await self.generate_file_name(str(image_url[(image_url.rfind('/')) + 1:]))
+        error_log_source = self.main_directory.joinpath(self.argument["error_log"])
 
-        directory = await self.make_directory()
+        error_log_record = f'{await self.get_time_stamp()}: {message}\n'
 
-        file_path = directory.joinpath(filename)
+        async with aiofiles.open(error_log_source, 'a') as file:
+            await file.write(error_log_record)
 
-        async with aiofiles.open(file_path, 'wb') as file:
-            # await self.write_to_sysout(f'Begin writing to {filename}')
-
-            await file.write(content)
-
-            file_size = await self.get_file_size(file_path) if self.argument['print_size'] else ''
-
-            # await self.write_to_sysout(f'Finished writing to {filename} {file_size}')
-            await self.write_to_sysout(f'Finished downloading: {filename} {file_size}')
-
-        if self.argument['save_source']:
-            await self.write_download_log(image_url, file_path)
+        await self.write_to_sysout(message)
 
     async def build_url_parameters(self) -> str:
         """
@@ -369,7 +358,7 @@ class GoogleImagesDownloader():
             search_term = content[start_content + 19:end_content]
 
         except TypeError as error:
-            await self.write_to_sysout(f'***Unable to complete similar image search: {error}')
+            await self.write_error_log(f'***Unable to complete similar image search: {error}')
             search_term = ''
             pass
 
@@ -433,6 +422,7 @@ class GoogleImagesDownloader():
             else:
                 formated_image_meta_data = await self.format_image_meta_data(image_meta_data)
                 image_url = formated_image_meta_data['image_link']
+
                 await self.set_sub_directory()
 
                 if self.argument['print_urls']:
@@ -461,12 +451,38 @@ class GoogleImagesDownloader():
 
             content = await self.download_url_data(unquoted_image_url, 'bytes')
 
-            await self.write_to_file(unquoted_image_url, content)
+            await self.write_image_to_file(unquoted_image_url, content)
         except TypeError as error:
-            if attempts < 3:
+            if attempts <= self.argument['repeat_failure']:
                 await self.download_images(image_url, attempts)
             else:
-                await self.write_to_sysout(f'***File not writen: {unquoted_image_url} {error}')
+                await self.write_error_log(f'***File not writen: {unquoted_image_url} {error}')
+
+    async def generate_image_file_path(self, image_url: str) -> str:
+        filename = await self.generate_file_name(str(image_url[(image_url.rfind('/')) + 1:]))
+        directory = await self.make_directory()
+        image_file_path = directory.joinpath(filename)
+
+        return image_file_path
+
+    async def write_image_to_file(self, image_url: str, content: bytes) -> None:
+        """
+        Writes data to file.
+        """
+        try:
+            image_file_path = await self.generate_image_file_path(image_url)
+
+            async with aiofiles.open(image_file_path, 'wb') as file:
+                await file.write(content)
+
+            file_size = await self.get_file_size(image_file_path) if self.argument['print_size'] else ''
+
+            await self.write_to_sysout(f'Finished downloading: {image_file_path} {file_size}')
+
+            if self.argument['save_source']:
+                await self.write_download_log(image_url, image_file_path)
+        except IOError as error:
+            await self.write_error_log(f'*** Error writing image to file: {error}')
 
     async def gather_images(self) -> None:
         """
@@ -476,6 +492,8 @@ class GoogleImagesDownloader():
             await self.download_images(self.argument['single_image'])
 
         else:
+            await self.make_directory()
+
             url_params = await self.build_url_parameters()
 
             google_url = await self.build_search_url(url_params)
