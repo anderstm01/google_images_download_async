@@ -199,21 +199,14 @@ class GoogleImagesDownloader():
 
         self.sub_dir = f'{image}{prefix}{self.argument["keywords"]}{suffix}{color}' if not self.argument['no_directory'] else ''
 
-    async def make_directory(self) -> None:
+    async def make_directory(self, directory: str) -> None:
         """
         """
         try:
-            if self.sub_dir:
-                file_path = self.main_directory.joinpath(self.sub_dir)
-                os.makedirs(self.main_directory.joinpath(self.sub_dir))
-            else:
-                file_path = self.main_directory
-                os.makedirs(self.main_directory)
+            os.makedirs(directory)
         except OSError as error:
             if error.errno == 17:
                 pass
-
-        return file_path
 
     async def generate_file_name(self, filename: str) -> str:
         """
@@ -460,7 +453,8 @@ class GoogleImagesDownloader():
 
     async def generate_image_file_path(self, image_url: str) -> str:
         filename = await self.generate_file_name(str(image_url[(image_url.rfind('/')) + 1:]))
-        directory = await self.make_directory()
+        directory = self.main_directory.joinpath(self.sub_dir) if self.sub_dir: else self.main_directory
+        await self.make_directory(directory)
         image_file_path = directory.joinpath(filename)
 
         return image_file_path
