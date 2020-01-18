@@ -134,12 +134,12 @@ async def parse_config():
                         type=float,
                         help="Connection timeout waiting for the image to download",
                         metavar='<n>')
-    # parser.add_argument('-th', '--thumbnail',
-    #                     action="store_true",
-    #                     help="Downloads image thumbnail along with the actual image")
-    # parser.add_argument('-tho', '--thumbnail_only',
-    #                     action="store_true",
-    #                     help="Downloads only thumbnail without downloading actual images")
+    parser.add_argument('-th', '--thumbnail',
+                        action="store_true",
+                        help="Downloads image thumbnail along with the actual image")
+    parser.add_argument('-tho', '--thumbnail_only',
+                        action="store_true",
+                        help="Downloads only thumbnail without downloading actual images")
     parser.add_argument('-la', '--language',
                         default=False,
                         choices=['Arabic', 'Chinese (Simplified)', 'Chinese (Traditional)',
@@ -177,14 +177,14 @@ async def parse_config():
     parser.add_argument('-of', '--offset',
                         help="Where to start in the fetched links",
                         metavar='<n>')
-    # parser.add_argument('-nd', '--no_download',
-    #                     action="store_true",
-    #                     help='''Prints the URLs of the images and/or thumbnails without
-    #                         downloading them''')
-    # parser.add_argument('-iu', '--ignore_urls',
-    #                     default=False,
-    #                     help="delimited list input of image urls/keywords to ignore",
-    #                     metavar='<k1,k2...>')
+    parser.add_argument('-nd', '--no_download',
+                        action="store_true",
+                        help='''Prints the URLs of the images and/or thumbnails without
+                            downloading them''')
+    parser.add_argument('-iu', '--ignore_urls',
+                        default='',
+                        help="delimited list input of image urls/keywords to ignore",
+                        metavar='<k1,k2...>')
     parser.add_argument('-sil', '--silent_mode',
                         action="store_true",
                         help="Remains silent. Does not print notification messages on the terminal")
@@ -192,6 +192,15 @@ async def parse_config():
                         help='''creates a text file containing a list of downloaded images
                             along with source page url''',
                         metavar='<path>')
+    parser.add_argument('-el', '--error_log',
+                        default='error_log.txt',
+                        help='''creates a text file error log''',
+                        metavar='<path>')
+    parser.add_argument('-rf', '--repeat_failure',
+                        default=2,
+                        help='''The number of times a failed download should be retried''',
+                        metavar='<n>')
+
 
     args, unknown_args = parser.parse_known_args()
 
@@ -211,7 +220,7 @@ async def parse_config():
                         "print_paths", "metadata", "extract_metadata", "socket_timeout",
                         "thumbnail", "thumbnail_only", "language", "prefix", "suffix", "chromedriver",
                         "related_images", "safe_search", "no_numbering", "offset", "no_download",
-                        "save_source", "silent_mode", "ignore_urls"]
+                        "save_source", "silent_mode", "ignore_urls", "repeat_failure", "error_log"]
 
         record_template = dict.fromkeys(default_args)
         record_template.update(vars(args))
