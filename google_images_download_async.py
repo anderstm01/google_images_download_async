@@ -114,6 +114,133 @@ class GoogleImagesDownloader():
         self.argument = argument
         self.sub_dir = ''
 
+    async def gather_and_download_images(self) -> None:
+        """
+        Downloads all scraped images.
+        """
+        await self.make_directory(self.main_directory)
+
+        if self.argument['single_image']:
+            await self.download_images(self.argument['single_image'])
+
+        else:
+
+            url_params = await self.build_url_parameters()
+
+            google_url = await self.build_search_url(url_params)
+
+            raw_html = await self.download_url_data(google_url, 'text')
+
+            if raw_html != None:
+                tasks = await self.generate_image_download_tasks(raw_html)
+                await asyncio.gather(*tasks)
+
+    async def make_directory(self, directory: str) -> None:
+        """
+        """
+        try:
+            os.makedirs(directory)
+        except OSError as error:
+            if error.errno == 17:
+                pass
+
+    async def build_url_parameters(self) -> str:
+        """
+        Returns string of url parameters.
+        """
+        lang_url = ''
+        time_range = ''
+        exact_size = ''
+        built_url = "&tbs="
+
+        params = self.url_parm_json_file.copy()
+
+        for parm in params:
+            params[parm][0] = self.argument[parm]
+
+        for count, parm_value in enumerate(params.values()):
+            if parm_value[0]:
+                ext_param = parm_value[1][parm_value[0]]
+                built_url += ext_param if count == 0 else f',{ext_param}'
+
+        params = lang_url+built_url+exact_size+time_range
+
+        return params
+
+    async def build_search_url(self, params: str) -> str:
+        """
+        Creates search url from provided params.
+        """
+        # check safe_search
+        safe_search_string = "&safe=active"
+
+        if self.argument['url']:
+            google_url = self.argument['url']
+        else:
+            search_term =  await self.build_search_term()
+
+            google_url = (f'https://www.google.com/search?q={quote(search_term)}' +
+                   f'&espv=2&biw=1366&bih=667&site=webhp&source=lnms&tbm=isch{params}' +
+                   '&sa=X&ei=XosDVaCXD8TasATItgE&ved=0CAcQ_AUoAg')
+
+        # safe search check
+        if self.argument['safe_search']:
+            google_url = google_url + safe_search_string
+
+        return google_url
+
+    async def build_search_term(self) -> str:
+        """
+        """
+        search_term = ''
+        specific_site = f'+site:{self.argument["specific_site"]}' if self.argument['specific_site'] else ''
+
+        if self.argument['keywords']:
+            search_term = f'{await self.build_keywords_search_term()}{specific_site}'
+
+        if self.argument['similar_images']:
+            search_term = f'{await self.build_similar_images_search_term()}{specific_site}'
+
+        return search_term
+
+    async def build_keywords_search_term(self) -> str:
+        """
+        """
+        keyword = self.argument['keywords'] if self.argument['keywords'] else ''
+        prefix = self.argument['prefix_keywords'] if self.argument['prefix_keywords'] else ''
+        suffix = self.argument['suffix_keywords'] if self.argument['suffix_keywords'] else ''
+
+        search_term = f'{prefix} {keyword} {suffix}'
+
+        return search_term
+
+    async def build_similar_images_search_term(self) -> str:
+        """
+        """
+        try:
+            google_similar_image_url = (f'https://www.google.com/searchbyimage?' +
+                f'site=search&sa=X&image_url={self.argument["similar_images"]}')
+
+            await self.write_to_sysout(f'Begin downloading images similar to {google_similar_image_url}')
+
+            content = await self.download_url_data(google_similar_image_url, 'text')
+            start_content = content.find('AMhZZ')
+            end_content = content.find('&', start_content)
+            google_url = f'https://www.google.com/search?tbs=sbi:{content[start_content:end_content]}&site=search&sa=X'
+
+            content = await self.download_url_data(google_url, 'text')
+
+            start_content = content.find('/search?sa=X&amp;q=')
+            end_content = content.find(';', start_content + 19)
+            search_term = content[start_content + 19:end_content]
+
+        except TypeError as error:
+            await self.write_error_log(f'***Unable to complete similar image search: {error}')
+            search_term = ''
+            pass
+
+        return search_term
+
     async def download_url_data(self, google_url: str, request_type: str, attempts: int = 0) -> bytes or str:
         """
         Downloads data from provided url.
@@ -163,11 +290,203 @@ class GoogleImagesDownloader():
             else:
                 await self.write_error_log(f'Timeout downloading: {google_url}')
 
-    async def write_to_sysout(self, message: str) -> None:
+    async def generate_image_download_tasks(self, page: str) -> asyncio.coroutine:
+        """
+        Gets all images from page.
+        """
+        tasks = []
+        limit = 1
+
+        while limit <= int(self.argument['limit']):
+
+            image_meta_data, end_content = await self.get_next_item(page)
+
+            if image_meta_data == "no_links":
+                break
+            if image_meta_data == '':
+                page = page[end_content:]
+            elif self.argument['offset'] and limit < int(self.argument['offset']):
+                limit += 1
+                page = page[end_content:]
+            else:
+                formated_image_meta_data = await self.format_image_meta_data(image_meta_data)
+                image_url = formated_image_meta_data['image_link']
+                image_thumbnail_url = formated_image_meta_data['image_thumbnail_url']
+
+                await self.set_sub_directory()
+
+                if self.argument['print_urls']:
+                    tasks.append(self.print_image_url(image_url))
+                else:
+                    tasks.append(self.download_images(image_url))
+                    tasks.append(self.download_image_thumbnails(image_url, image_thumbnail_url))
+
+                limit += 1
+
+                page = page[end_content:]
+
+        return tasks
+
+    async def get_next_item(self, page: str) -> tuple:
+        """
+        Gets next image from page.
+        """
+        try:
+            start_line = page.find('rg_meta notranslate')
+            if start_line == -1:  # If no links are found then give an error!
+                image_meta_data = "no_links"
+                end_content = 0
+            else:
+                start_line = page.find('class="rg_meta notranslate">')
+                start_content = page.find('{', start_line + 1)
+                end_content = page.find('</div>', start_content + 1)
+                content_raw = str(page[start_content:end_content])
+                content_decode = bytes(content_raw, "utf-8").decode("unicode_escape")
+                image_meta_data = json.loads(content_decode)
+        except (UnicodeError, json.JSONDecodeError):
+            image_meta_data = ""
+
+        return image_meta_data, end_content
+
+    async def format_image_meta_data(self, obj: dict) -> dict:
+        """
+        Formats image meta dates.
+        """
+        formatted_object = {}
+        formatted_object['image_format'] = obj['ity']
+        formatted_object['image_height'] = obj['oh']
+        formatted_object['image_width'] = obj['ow']
+        formatted_object['image_link'] = obj['ou']
+        formatted_object['image_description'] = obj['pt']
+        formatted_object['image_host'] = obj['rh']
+        formatted_object['image_source'] = obj['ru']
+        formatted_object['image_thumbnail_url'] = obj['tu']
+
+        return formatted_object
+
+    async def set_sub_directory(self) -> None:
+        '''
+        '''
+        image  = f'{self.argument["image_directory"]}/' if self.argument['image_directory'] else ''
+        prefix = f'{self.argument["prefix_keywords"]} ' if self.argument['prefix_keywords'] else ''
+        suffix = f' {self.argument["suffix_keywords"]}' if self.argument['suffix_keywords'] else ''
+        color  = f' - {self.argument["color"]}' if self.argument['color'] else ''
+
+        self.sub_dir = f'{image}{prefix}{self.argument["keywords"]}{suffix}{color}' if not self.argument['no_directory'] else ''
+
+    async def print_image_url(self, image_url: str) -> None:
         """
         """
-        if not self.argument['silent_mode']:
-            print(message)
+        await self.write_to_sysout(f'Image URL: {image_url}')
+
+    async def download_images(self, image_url: str, attempts: int = 0) -> None:
+        """
+        Downloads image from provided url to provided sub directory.
+        """
+        try:
+            attempts += 1
+            unquoted_image_url = unquote(image_url)
+
+            content = await self.download_url_data(unquoted_image_url, 'bytes')
+
+            await self.write_image_to_file(unquoted_image_url, content)
+        except TypeError as error:
+            if attempts <= self.argument['repeat_failure']:
+                await self.download_images(image_url, attempts)
+            else:
+                await self.write_error_log(f'***File not writen: {unquoted_image_url} {error}')
+
+    async def write_image_to_file(self, image_url: str, content: bytes) -> None:
+        """
+        Writes data to file.
+        """
+        filename = await self.generate_file_name(str(image_url[(image_url.rfind('/')) + 1:]))
+        image_directory = await self.generate_image_directory()
+        image_file_path = image_directory.joinpath(filename)
+
+        await self.write_to_file(image_file_path, content)
+        file_size = await self.get_file_size(image_file_path) if self.argument['print_size'] else ''
+
+        await self.write_to_sysout(f'Finished downloading: {image_file_path} {file_size}')
+
+        if self.argument['save_source']:
+            await self.write_download_log(image_url, image_file_path)
+
+    async def generate_file_name(self, filename: str) -> str:
+        """
+        """
+        if '?' in filename:
+            filename = filename[:filename.find('?')]
+
+        if not any(extension in filename for extension in self.image_file_allowed_extensions):
+            filename = f'{filename}.jpg'
+
+        if self.argument["prefix"]:
+            filename = f'{self.argument["prefix"]} {filename}'
+
+        if self.argument["suffix"]:
+            filename, ext = filename.rsplit('.', 1)
+            filename = f'{filename} {self.argument["suffix"]}.{ext}'
+
+        return filename
+
+    async def generate_image_directory(self) -> str:
+        """
+        """
+        image_directory = self.main_directory.joinpath(self.sub_dir) if self.sub_dir else self.main_directory
+        await self.make_directory(image_directory)
+
+        return image_directory
+
+    async def download_image_thumbnails(self, image_url: str, image_thumbnail_url: str, attempts: int = 0) -> None:
+        """
+        Downloads image from provided url to provided sub directory.
+        """
+        try:
+            attempts += 1
+            unquoted_image_thumbnail_url = unquote(image_thumbnail_url)
+
+            content = await self.download_url_data(unquoted_image_thumbnail_url, 'bytes')
+
+            await self.write_image_thumbnail_to_file(image_url, unquoted_image_thumbnail_url, content)
+        except TypeError as error:
+            if attempts <= self.argument['repeat_failure']:
+                await self.download_images(unquoted_image_thumbnail_url, attempts)
+            else:
+                await self.write_error_log(f'***File not writen: {unquoted_image_thumbnail_url} {error}')
+
+    async def write_image_thumbnail_to_file(self, image_url: str, image_thumbnail_url: str, content: bytes) -> None:
+        """
+        Writes data to file.
+        """
+        filename = await self.generate_file_name(str(image_url[(image_url.rfind('/')) + 1:]))
+        image_thumbnail_directory = await self.generate_image_thumbnail_directory()
+        image_thumbnail_file_path = image_thumbnail_directory.joinpath(filename)
+
+        await self.write_to_file(image_thumbnail_file_path, content)
+        file_size = await self.get_file_size(image_thumbnail_file_path) if self.argument['print_size'] else ''
+
+        await self.write_to_sysout(f'Finished downloading: {image_thumbnail_file_path} {file_size}')
+
+        if self.argument['save_source']:
+            await self.write_download_log(image_thumbnail_url, image_thumbnail_file_path)
+
+    async def generate_image_thumbnail_directory(self) -> str:
+        """
+        """
+        image_thumbnail_directory = self.main_directory.joinpath(self.sub_dir, 'thumbnail') if self.sub_dir else self.main_directory.joinpath('thumbnail')
+        await self.make_directory(image_thumbnail_directory)
+
+        return image_thumbnail_directory
+
+    async def write_to_file(self, image_file_path: str, content: bytes) -> None:
+        """
+        """
+        try:
+            async with aiofiles.open(image_file_path, 'wb') as file:
+                await file.write(content)
+        except IOError as error:
+            await self.write_error_log(f'***{error}: {image_file_path}')
 
     async def get_file_size(self, file_path: str) -> str:
         """
@@ -189,51 +508,11 @@ class GoogleImagesDownloader():
 
         return file_size_with_units
 
-    async def set_sub_directory(self) -> None:
-        '''
-        '''
-        image  = f'{self.argument["image_directory"]}/' if self.argument['image_directory'] else ''
-        prefix = f'{self.argument["prefix_keywords"]} ' if self.argument['prefix_keywords'] else ''
-        suffix = f' {self.argument["suffix_keywords"]}' if self.argument['suffix_keywords'] else ''
-        color  = f' - {self.argument["color"]}' if self.argument['color'] else ''
-
-        self.sub_dir = f'{image}{prefix}{self.argument["keywords"]}{suffix}{color}' if not self.argument['no_directory'] else ''
-
-    async def make_directory(self, directory: str) -> None:
+    async def write_to_sysout(self, message: str) -> None:
         """
         """
-        try:
-            os.makedirs(directory)
-        except OSError as error:
-            if error.errno == 17:
-                pass
-
-    async def generate_file_name(self, filename: str) -> str:
-        """
-        """
-        if '?' in filename:
-            filename = filename[:filename.find('?')]
-
-        if not any(extension in filename for extension in self.image_file_allowed_extensions):
-            filename = f'{filename}.jpg'
-
-        if self.argument["prefix"]:
-            filename = f'{self.argument["prefix"]} {filename}'
-
-        if self.argument["suffix"]:
-            filename, ext = filename.rsplit('.', 1)
-            filename = f'{filename} {self.argument["suffix"]}.{ext}'
-
-        return filename
-
-    async def get_time_stamp(self) -> None:
-        """
-        """
-        datetime_now = datetime.now()
-        time_stamp = datetime.timestamp(datetime_now)
-        form_time_stamp = datetime.fromtimestamp(time_stamp)
-
-        return form_time_stamp
+        if not self.argument['silent_mode']:
+            print(message)
 
     async def write_download_log(self, image_url: str, file_path: str) -> None:
         """
@@ -259,244 +538,14 @@ class GoogleImagesDownloader():
 
         await self.write_to_sysout(message)
 
-    async def build_url_parameters(self) -> str:
-        """
-        Returns string of url parameters.
-        """
-        lang_url = ''
-        time_range = ''
-        exact_size = ''
-        built_url = "&tbs="
-
-        params = self.url_parm_json_file.copy()
-
-        for parm in params:
-            params[parm][0] = self.argument[parm]
-
-        for count, parm_value in enumerate(params.values()):
-            if parm_value[0]:
-                ext_param = parm_value[1][parm_value[0]]
-                built_url += ext_param if count == 0 else f',{ext_param}'
-
-        params = lang_url+built_url+exact_size+time_range
-
-        return params
-
-    async def build_keywords_search_term(self) -> str:
+    async def get_time_stamp(self) -> None:
         """
         """
-        keyword = self.argument['keywords'] if self.argument['keywords'] else ''
-        prefix = self.argument['prefix_keywords'] if self.argument['prefix_keywords'] else ''
-        suffix = self.argument['suffix_keywords'] if self.argument['suffix_keywords'] else ''
+        datetime_now = datetime.now()
+        time_stamp = datetime.timestamp(datetime_now)
+        form_time_stamp = datetime.fromtimestamp(time_stamp)
 
-        search_term = f'{prefix} {keyword} {suffix}'
-
-        return search_term
-
-    async def build_search_term(self) -> str:
-        """
-        """
-        search_term = ''
-        specific_site = f'+site:{self.argument["specific_site"]}' if self.argument['specific_site'] else ''
-
-        if self.argument['similar_images']:
-            search_term = f'{await self.build_similar_images_search_term()}{specific_site}'
-
-        if self.argument['keywords']:
-            search_term = f'{await self.build_keywords_search_term()}{specific_site}'
-
-        return search_term
-
-    async def build_search_url(self, params: str) -> str:
-        """
-        Creates search url from provided params.
-        """
-        # check safe_search
-        safe_search_string = "&safe=active"
-
-        if self.argument['url']:
-            google_url = self.argument['url']
-        else:
-            search_term =  await self.build_search_term()
-
-            google_url = (f'https://www.google.com/search?q={quote(search_term)}' +
-                   f'&espv=2&biw=1366&bih=667&site=webhp&source=lnms&tbm=isch{params}' +
-                   '&sa=X&ei=XosDVaCXD8TasATItgE&ved=0CAcQ_AUoAg')
-
-        # safe search check
-        if self.argument['safe_search']:
-            google_url = google_url + safe_search_string
-
-        return google_url
-
-    async def build_similar_images_search_term(self) -> str:
-        """
-
-        """
-        try:
-            google_similar_image_url = (f'https://www.google.com/searchbyimage?' +
-                f'site=search&sa=X&image_url={self.argument["similar_images"]}')
-
-            await self.write_to_sysout(f'Begin downloading images similar to {google_similar_image_url}')
-
-            content = await self.download_url_data(google_similar_image_url, 'text')
-            start_content = content.find('AMhZZ')
-            end_content = content.find('&', start_content)
-            google_url = f'https://www.google.com/search?tbs=sbi:{content[start_content:end_content]}&site=search&sa=X'
-
-            content = await self.download_url_data(google_url, 'text')
-
-            start_content = content.find('/search?sa=X&amp;q=')
-            end_content = content.find(';', start_content + 19)
-            search_term = content[start_content + 19:end_content]
-
-        except TypeError as error:
-            await self.write_error_log(f'***Unable to complete similar image search: {error}')
-            search_term = ''
-            pass
-
-        return search_term
-
-    async def format_image_meta_data(self, obj: dict) -> dict:
-        """
-        Formats image meta dates.
-        """
-        formatted_object = {}
-        formatted_object['image_format'] = obj['ity']
-        formatted_object['image_height'] = obj['oh']
-        formatted_object['image_width'] = obj['ow']
-        formatted_object['image_link'] = obj['ou']
-        formatted_object['image_description'] = obj['pt']
-        formatted_object['image_host'] = obj['rh']
-        formatted_object['image_source'] = obj['ru']
-        formatted_object['image_thumbnail_url'] = obj['tu']
-
-        return formatted_object
-
-    async def get_next_item(self, page: str) -> tuple:
-        """
-        Gets next image from page.
-        """
-        try:
-            start_line = page.find('rg_meta notranslate')
-            if start_line == -1:  # If no links are found then give an error!
-                image_meta_data = "no_links"
-                end_content = 0
-            else:
-                start_line = page.find('class="rg_meta notranslate">')
-                start_content = page.find('{', start_line + 1)
-                end_content = page.find('</div>', start_content + 1)
-                content_raw = str(page[start_content:end_content])
-                content_decode = bytes(content_raw, "utf-8").decode("unicode_escape")
-                image_meta_data = json.loads(content_decode)
-        except (UnicodeError, json.JSONDecodeError):
-            image_meta_data = ""
-
-        return image_meta_data, end_content
-
-    async def generate_image_download_tasks(self, page: str) -> asyncio.coroutine:
-        """
-        Gets all images from page.
-        """
-        tasks = []
-        limit = 1
-
-        while limit <= int(self.argument['limit']):
-
-            image_meta_data, end_content = await self.get_next_item(page)
-
-            if image_meta_data == "no_links":
-                break
-            if image_meta_data == '':
-                page = page[end_content:]
-            elif self.argument['offset'] and limit < int(self.argument['offset']):
-                limit += 1
-                page = page[end_content:]
-            else:
-                formated_image_meta_data = await self.format_image_meta_data(image_meta_data)
-                image_url = formated_image_meta_data['image_link']
-
-                await self.set_sub_directory()
-
-                if self.argument['print_urls']:
-                    tasks.append(self.print_image_url(image_url))
-                else:
-                    tasks.append(self.download_images(image_url))
-
-                limit += 1
-
-                page = page[end_content:]
-
-        return tasks
-
-    async def print_image_url(self, image_url: str) -> None:
-        """
-        """
-        await self.write_to_sysout(f'Image URL: {image_url}')
-
-    async def download_images(self, image_url: str, attempts: int = 0) -> None:
-        """
-        Downloads image from provided url to provided sub directory.
-        """
-        try:
-            attempts += 1
-            unquoted_image_url = unquote(image_url)
-
-            content = await self.download_url_data(unquoted_image_url, 'bytes')
-
-            await self.write_image_to_file(unquoted_image_url, content)
-        except TypeError as error:
-            if attempts <= self.argument['repeat_failure']:
-                await self.download_images(image_url, attempts)
-            else:
-                await self.write_error_log(f'***File not writen: {unquoted_image_url} {error}')
-
-    async def generate_image_file_path(self, image_url: str) -> str:
-        filename = await self.generate_file_name(str(image_url[(image_url.rfind('/')) + 1:]))
-        directory = self.main_directory.joinpath(self.sub_dir) if self.sub_dir: else self.main_directory
-        await self.make_directory(directory)
-        image_file_path = directory.joinpath(filename)
-
-        return image_file_path
-
-    async def write_image_to_file(self, image_url: str, content: bytes) -> None:
-        """
-        Writes data to file.
-        """
-        try:
-            image_file_path = await self.generate_image_file_path(image_url)
-
-            async with aiofiles.open(image_file_path, 'wb') as file:
-                await file.write(content)
-
-            file_size = await self.get_file_size(image_file_path) if self.argument['print_size'] else ''
-
-            await self.write_to_sysout(f'Finished downloading: {image_file_path} {file_size}')
-
-            if self.argument['save_source']:
-                await self.write_download_log(image_url, image_file_path)
-        except IOError as error:
-            await self.write_error_log(f'*** Error writing image to file: {error}')
-
-    async def gather_images(self) -> None:
-        """
-        Downloads all scraped images.
-        """
-        if self.argument['single_image']:
-            await self.download_images(self.argument['single_image'])
-
-        else:
-            await self.make_directory()
-
-            url_params = await self.build_url_parameters()
-
-            google_url = await self.build_search_url(url_params)
-
-            raw_html = await self.download_url_data(google_url, 'text')
-
-            if raw_html != None:
-                tasks = await self.generate_image_download_tasks(raw_html)
-                await asyncio.gather(*tasks)
+        return form_time_stamp
 
 
 class DownloadError(Exception):
@@ -524,13 +573,13 @@ async def main() -> None:
     for record in records:
         if record['single_image']:
             google_image_downloader = GoogleImagesDownloader(url_parm_json_file, record)
-            tasks.append(google_image_downloader.gather_images())
+            tasks.append(google_image_downloader.gather_and_download_images())
         else:
             argument_expander = ArgumentExpander(record)
             expanded_arguments = await argument_expander.expand_arguments()
             for argument in expanded_arguments:
                 google_image_downloader = GoogleImagesDownloader(url_parm_json_file, argument)
-                tasks.append(google_image_downloader.gather_images())
+                tasks.append(google_image_downloader.gather_and_download_images())
 
     await asyncio.gather(*tasks)
 
