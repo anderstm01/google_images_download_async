@@ -296,6 +296,7 @@ class GoogleImagesDownloader():
         """
         tasks = []
         limit = 1
+        ignore_url = False
 
         while limit <= int(self.argument['limit']):
 
@@ -315,11 +316,21 @@ class GoogleImagesDownloader():
 
                 await self.set_sub_directory()
 
-                if self.argument['print_urls']:
-                    tasks.append(self.print_image_url(image_url))
-                else:
-                    tasks.append(self.download_images(image_url))
-                    tasks.append(self.download_image_thumbnails(image_url, image_thumbnail_url))
+                if self.argument['ignore_urls']:
+                    if any(ignored_url in image_url for ignored_url in self.argument['ignore_urls'].split(',')):
+                        tasks.append(self.write_to_sysout(f'URL Ignored: {image_url}'))
+                        ignore_url = True
+
+                if not ignore_url:
+                    if self.argument['print_urls'] or self.argument['no_download']:
+                        tasks.append(self.print_image_url(image_url))
+
+                    if not self.argument['no_download']:
+                        if not self.argument['thumbnail_only']:
+                            tasks.append(self.download_images(image_url))
+
+                        if self.argument['thumbnail'] or self.argument['thumbnail_only']:
+                            tasks.append(self.download_image_thumbnails(image_url, image_thumbnail_url))
 
                 limit += 1
 
