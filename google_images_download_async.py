@@ -12,6 +12,9 @@ from pathlib import Path
 from urllib.parse import unquote, quote
 
 # Third party imports:
+from selenium import webdriver
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.common.by import By
 import aiofiles
 import aiohttp
 
@@ -129,7 +132,10 @@ class GoogleImagesDownloader():
 
             google_url = await self.build_search_url(url_params)
 
-            raw_html = await self.download_url_data(google_url, 'text')
+            if self.argument['limit'] > 100:
+                raw_html = await self.multi_page_image_download(google_url)
+            else:
+                raw_html = await self.download_url_data(google_url, 'text')
 
             if raw_html != None:
                 tasks = await self.generate_image_download_tasks(raw_html)
@@ -316,6 +322,10 @@ class GoogleImagesDownloader():
 
                 await self.set_sub_directory()
 
+                if self.argument['proxy']:
+                    os.environ["http_proxy"] = self.argument['proxy']
+                    os.environ["https_proxy"] = self.argument['proxy']
+
                 if self.argument['ignore_urls']:
                     if any(ignored_url in image_url for ignored_url in self.argument['ignore_urls'].split(',')):
                         tasks.append(self.write_to_sysout(f'URL Ignored: {image_url}'))
@@ -389,6 +399,33 @@ class GoogleImagesDownloader():
         """
         """
         await self.write_to_sysout(f'Image URL: {image_url}')
+
+    async def multi_page_image_download(self, google_url: str):
+        page_source_save = ''
+
+        try:
+            options = webdriver.ChromeOptions()
+            options.add_argument('--no-sandbox')
+            options.add_argument('--headless')
+
+            with webdriver.Chrome(self.argument['chromedriver'], options=options) as wd:
+                wd.get(google_url)
+                element = wd.find_element_by_tag_name("body")
+
+                while page_source_save != wd.page_source:
+                    page_source_save = wd.page_source
+
+                    element.send_keys(Keys.END)
+                    try:
+                        element.find_element_by_xpath("//input[@id='smb']").click()
+                    except:
+                        pass
+
+                    await asyncio.sleep(0.5)
+        except Exception as error:
+            print(error)
+
+        return page_source_save
 
     async def download_images(self, image_url: str, attempts: int = 0) -> None:
         """
