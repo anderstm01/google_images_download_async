@@ -159,12 +159,14 @@ async def parse_config():
                         default=False,
                         help="A word that you would want to add to the end of each image name",
                         metavar='<suffix>')
-    # parser.add_argument('-px', '--proxy',
-    #                     help='specify a proxy address and port',
-    #                     metavar='<address:port>')
-    # parser.add_argument('-cd', '--chromedriver',
-    #                     help='specify the path to chromedriver executable in your local machine',
-    #                     metavar='<path>')
+    parser.add_argument('-px', '--proxy',
+                        default='',
+                        help='specify a proxy address and port',
+                        metavar='<address:port>')
+    parser.add_argument('-cd', '--chromedriver',
+                        default='',
+                        help='specify the path to chromedriver executable in your local machine',
+                        metavar='<path>')
     # parser.add_argument('-ri', '--related_images',
     #                     action="store_true",
     #                     help="Downloads images that are similar to the keyword provided")
