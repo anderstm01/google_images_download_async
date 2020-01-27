@@ -10,6 +10,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import unquote, quote
+import math
 
 # Third party imports:
 from selenium import webdriver
@@ -404,8 +405,7 @@ class GoogleImagesDownloader():
     async def multi_page_image_download(self, google_url: str):
         """
         """
-        page_source = ''
-        staleElement = True
+        stale_element = True
 
         options = webdriver.ChromeOptions()
         options.add_argument('--no-sandbox')
@@ -415,22 +415,22 @@ class GoogleImagesDownloader():
             wd.get(google_url)
             html_body_element = wd.find_element_by_tag_name("body")
 
-            while page_source != wd.page_source:
-                page_source = wd.page_source
-
-                while staleElement:
+            number_of_pages = math.ceil(self.argument['limit']/100)
+            for i in range(number_of_pages):
+                while stale_element:
                     try:
                         html_body_element.send_keys(Keys.END)
-                        staleElement = False
+                        stale_element = False
                     except StaleElementReferenceException as error:
                         pass
-
                 try:
                     html_body_element.find_element_by_xpath("//input[@id='smb']").click()
                 except:
                     pass
 
                 await asyncio.sleep(0.5)
+
+            page_source = wd.page_source
 
         return page_source
 
