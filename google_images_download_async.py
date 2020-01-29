@@ -14,7 +14,7 @@ import math
 
 # Third party imports:
 from selenium import webdriver
-from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import WebDriverException, ElementNotInteractableException
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.by import By
 import aiofiles
@@ -402,35 +402,42 @@ class GoogleImagesDownloader():
         """
         await self.write_to_sysout(f'Image URL: {image_url}')
 
-    async def multi_page_image_download(self, google_url: str):
+    async def multi_page_image_download(self, google_url: str) -> str:
         """
         """
+        page_source = ''
         stale_element = True
 
         options = webdriver.ChromeOptions()
         options.add_argument('--no-sandbox')
         options.add_argument('--headless')
 
-        with webdriver.Chrome(self.argument['chromedriver'], options=options) as wd:
-            wd.get(google_url)
-            html_body_element = wd.find_element_by_tag_name("body")
+        try:
+            with webdriver.Chrome(self.argument['chromedriver'], options=options) as wd:
+                wd.get(google_url)
+                html_body_element = wd.find_element_by_tag_name("body")
 
-            number_of_pages = math.ceil(self.argument['limit']/100)
-            for i in range(number_of_pages):
-                while stale_element:
+                number_of_pages = math.ceil(self.argument['limit']/100)
+                for i in range(number_of_pages):
+                    while stale_element:
+                        try:
+                            html_body_element.send_keys(Keys.END)
+                            stale_element = False
+                        except StaleElementReferenceException:
+                            pass
+
                     try:
-                        html_body_element.send_keys(Keys.END)
-                        stale_element = False
-                    except StaleElementReferenceException as error:
+                        html_body_element.find_element_by_xpath("//input[@id='smb']").click()
+                    except ElementNotInteractableException:
                         pass
-                try:
-                    html_body_element.find_element_by_xpath("//input[@id='smb']").click()
-                except:
-                    pass
 
-                await asyncio.sleep(0.5)
+                    await asyncio.sleep(0.5)
 
-            page_source = wd.page_source
+                page_source = wd.page_source
+        except WebDriverException as error:
+             await self.write_error_log(f'Exception: {error}' +
+                'Cannot locate chromedriver please insure the chrome browser is installed' +
+                'and the argument "--chromedriver" has the correct path to the executable.')
 
         return page_source
 
