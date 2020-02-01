@@ -140,6 +140,17 @@ class GoogleImagesDownloader():
                 tasks = await self.generate_image_download_tasks(raw_html)
                 await asyncio.gather(*tasks)
 
+    async def get_related_image_google_url(self, raw_html: str) -> list:
+        google_related_image_url = []
+
+        for html_class in re.finditer('class="dgdd6c VM9Z5b"', raw_html):
+            class_content = raw_html[html_class.end():]
+            href_start = class_content.find('href=') + 6
+            href_end = class_content.find('>') - 1
+            google_related_image_url.append(unquote(f'https://www.google.com{class_content[href_start:href_end].replace("&amp;", "&")}'))
+
+        return google_related_image_url
+
     async def make_directory(self, directory: str) -> None:
         """
         """
