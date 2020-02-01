@@ -14,7 +14,7 @@ import math
 
 # Third party imports:
 from selenium import webdriver
-from selenium.common.exceptions import WebDriverException, ElementNotInteractableException
+from selenium.common.exceptions import WebDriverException, ElementNotInteractableException, NoSuchElementException
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.by import By
 import aiofiles
@@ -434,8 +434,10 @@ class GoogleImagesDownloader():
                             pass
 
                     try:
-                        html_body_element.find_element_by_xpath("//input[@id='smb']").click()
+                        html_body_element.find_element_by_xpath("//input[@id='smc']").click()
                     except ElementNotInteractableException:
+                        pass
+                    except NoSuchElementException:
                         pass
 
                     await asyncio.sleep(0.5)
