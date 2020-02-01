@@ -134,10 +134,7 @@ class GoogleImagesDownloader():
 
             google_url = await self.build_search_url(url_params)
 
-            if self.argument['limit'] > 100:
-                raw_html = await self.multi_page_image_download(google_url)
-            else:
-                raw_html = await self.download_url_data(google_url, 'text')
+            raw_html = await self.get_raw_html_data(google_url)
 
             if raw_html != None:
                 tasks = await self.generate_image_download_tasks(raw_html)
@@ -297,6 +294,16 @@ class GoogleImagesDownloader():
                 await self.download_url_data(google_url, request_type, attempts)
             else:
                 await self.write_error_log(f'Timeout downloading: {google_url}')
+
+    async def get_raw_html_data(self, google_url: str) -> str:
+        """
+        """
+        if self.argument['limit'] > 100:
+            raw_html = await self.multi_page_image_download(google_url)
+        else:
+            raw_html = await self.download_url_data(google_url, 'text')
+
+        return raw_html
 
     async def generate_image_download_tasks(self, page: str) -> asyncio.coroutine:
         """
