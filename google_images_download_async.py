@@ -434,7 +434,7 @@ class GoogleImagesDownloader():
                             pass
 
                     try:
-                        html_body_element.find_element_by_xpath("//input[@id='smc']").click()
+                        html_body_element.find_element_by_xpath("//input[@id='smb']").click()
                     except ElementNotInteractableException:
                         pass
                     except NoSuchElementException:
