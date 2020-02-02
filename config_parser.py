@@ -199,7 +199,7 @@ async def parse_config():
                         help='''creates a text file error log''',
                         metavar='<path>')
     parser.add_argument('-rf', '--repeat_failure',
-                        default=2,
+                        default=0,
                         help='''The number of times a failed download should be retried''',
                         metavar='<n>')
 
