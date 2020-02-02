@@ -43,10 +43,10 @@ class ArgumentExpander():
                     for row in keyword_reader:
                         keywords += str(row).strip()
             else:
-                print(f'***Unable to import keywords file: {keywords_file}',
+                print(f'Unable to import keywords file: {keywords_file}',
                 f'file extension not valid use: {keywords_file_allowed_extensions}')
         except FileNotFoundError as error:
-            print(f'***Unable to import keywords file: {keywords_file} {error}')
+            print(f'Unable to import keywords file: {keywords_file} {error}')
 
         return keywords
 
@@ -246,7 +246,7 @@ class GoogleImagesDownloader():
             search_term = content[start_content + 19:end_content]
 
         except TypeError as error:
-            await self.write_error_log(f'***Unable to complete similar image search: {error}')
+            await self.write_error_log(f'Unable to complete similar image search: {error}')
             search_term = ''
             pass
 
@@ -290,16 +290,19 @@ class GoogleImagesDownloader():
             await self.write_error_log(error)
 
         except aiohttp.client_exceptions.ClientConnectorError as error:
-            await self.write_error_log(f'***Unable to Connect to Client {error} URL: {google_url}')
+            await self.write_error_log(f'Unable to Connect to Client {error} URL: {google_url}')
 
         except aiohttp.client_exceptions.InvalidURL as error:
-            await self.write_error_log(f'***Invalid URL: {error}')
+            await self.write_error_log(f'Invalid URL: {error}')
 
         except asyncio.TimeoutError:
             if attempts < self.argument['repeat_failure']:
                 await self.download_url_data(google_url, request_type, attempts)
             else:
                 await self.write_error_log(f'Timeout downloading: {google_url}')
+
+        except ServerDisconnectedError as error:
+            await self.write_error_log(f'{error} While downloading {google_url}')
 
     async def get_raw_html_data(self, google_url: str) -> str:
         """
@@ -470,7 +473,7 @@ class GoogleImagesDownloader():
             if attempts <= self.argument['repeat_failure']:
                 await self.download_images(image_url, attempts)
             else:
-                await self.write_error_log(f'***File not writen: {unquoted_image_url} {error}')
+                await self.write_error_log(f'File not writen: {unquoted_image_url} {error}')
 
     async def write_image_to_file(self, image_url: str, content: bytes) -> None:
         """
@@ -535,7 +538,7 @@ class GoogleImagesDownloader():
             if attempts <= self.argument['repeat_failure']:
                 await self.download_images(unquoted_image_thumbnail_url, attempts)
             else:
-                await self.write_error_log(f'***File not writen: {unquoted_image_thumbnail_url} {error}')
+                await self.write_error_log(f'File not writen: {unquoted_image_thumbnail_url} {error}')
 
     async def write_image_thumbnail_to_file(self, image_url: str, image_thumbnail_url: str, content: bytes) -> None:
         """
@@ -596,7 +599,7 @@ class GoogleImagesDownloader():
             async with aiofiles.open(image_file_path, 'wb') as file:
                 await file.write(content)
         except IOError as error:
-            await self.write_error_log(f'***{error}: {image_file_path}')
+            await self.write_error_log(f'{error}: {image_file_path}')
 
     async def get_file_size(self, file_path: str) -> str:
         """
@@ -669,7 +672,7 @@ class DownloadError(Exception):
         self.status = status
 
     def __str__(self):
-        return f'***Unable to download {self.url}, HTTP Status Code was {self.status}'
+        return f'Unable to download {self.url}, HTTP Status Code was {self.status}'
 
 
 async def main() -> None:
