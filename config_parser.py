@@ -167,9 +167,9 @@ async def parse_config():
                         default='',
                         help='specify the path to chromedriver executable in your local machine',
                         metavar='<path>')
-    # parser.add_argument('-ri', '--related_images',
-    #                     action="store_true",
-    #                     help="Downloads images that are similar to the keyword provided")
+    parser.add_argument('-ri', '--related_images',
+                        action="store_true",
+                        help="Downloads images that are similar to the keyword provided")
     parser.add_argument('-sa', '--safe_search',
                         action="store_true",
                         help="Turns on the safe search filter while searching for images")
