@@ -11,6 +11,7 @@ from datetime import datetime
 from pathlib import Path
 from urllib.parse import unquote, quote
 import math
+import re
 
 # Third party imports:
 from selenium import webdriver
@@ -113,11 +114,10 @@ class GoogleImagesDownloader():
     """
     def __init__(self, url_parm_json_file, argument):
         self.main_directory = Path(argument['output_directory'] or "Downloads")
-        self.image_file_allowed_extensions = (".jpg", ".jpeg", ".gif", ".png", ".bmp", ".svg", ".webp", ".ico")
-        self.file_size_units = ('bytes', 'KB', 'MB', 'GB', 'TB')
         self.url_parm_json_file = url_parm_json_file
         self.argument = argument
         self.sub_dir = ''
+        self.tasks = []
 
     async def gather_and_download_images(self) -> None:
         """
@@ -137,19 +137,12 @@ class GoogleImagesDownloader():
             raw_html = await self.get_raw_html_data(google_url)
 
             if raw_html != None:
-                tasks = await self.generate_image_download_tasks(raw_html)
-                await asyncio.gather(*tasks)
+                await self.generate_image_download_tasks(raw_html)
 
-    async def get_related_image_google_url(self, raw_html: str) -> list:
-        google_related_image_url = []
+                if self.argument['related_images']:
+                    await self.download_related_image_google_url(raw_html)
 
-        for html_class in re.finditer('class="dgdd6c VM9Z5b"', raw_html):
-            class_content = raw_html[html_class.end():]
-            href_start = class_content.find('href=') + 6
-            href_end = class_content.find('>') - 1
-            google_related_image_url.append(unquote(f'https://www.google.com{class_content[href_start:href_end].replace("&amp;", "&")}'))
-
-        return google_related_image_url
+                await asyncio.gather(*self.tasks)
 
     async def make_directory(self, directory: str) -> None:
         """
@@ -233,6 +226,8 @@ class GoogleImagesDownloader():
     async def build_similar_images_search_term(self) -> str:
         """
         """
+        await asyncio.sleep(0.1)
+
         try:
             google_similar_image_url = (f'https://www.google.com/searchbyimage?' +
                 f'site=search&sa=X&image_url={self.argument["similar_images"]}')
@@ -320,7 +315,6 @@ class GoogleImagesDownloader():
         """
         Gets all images from page.
         """
-        tasks = []
         limit = 1
         ignore_url = False
 
@@ -348,25 +342,23 @@ class GoogleImagesDownloader():
 
                 if self.argument['ignore_urls']:
                     if any(ignored_url in image_url for ignored_url in self.argument['ignore_urls'].split(',')):
-                        tasks.append(self.write_to_sysout(f'URL Ignored: {image_url}'))
+                        self.tasks.append(self.write_to_sysout(f'URL Ignored: {image_url}'))
                         ignore_url = True
 
                 if not ignore_url:
                     if self.argument['print_urls'] or self.argument['no_download']:
-                        tasks.append(self.print_image_url(image_url))
+                        self.tasks.append(self.print_image_url(image_url))
 
                     if not self.argument['no_download']:
                         if not self.argument['thumbnail_only']:
-                            tasks.append(self.download_images(image_url))
+                            self.tasks.append(self.download_images(image_url))
 
                         if self.argument['thumbnail'] or self.argument['thumbnail_only']:
-                            tasks.append(self.download_image_thumbnails(image_url, image_thumbnail_url))
+                            self.tasks.append(self.download_image_thumbnails(image_url, image_thumbnail_url))
 
                 limit += 1
 
                 page = page[end_content:]
-
-        return tasks
 
     async def get_next_item(self, page: str) -> tuple:
         """
@@ -465,6 +457,8 @@ class GoogleImagesDownloader():
         """
         Downloads image from provided url to provided sub directory.
         """
+        await asyncio.sleep(0.1)
+
         try:
             attempts += 1
             unquoted_image_url = unquote(image_url)
@@ -482,6 +476,8 @@ class GoogleImagesDownloader():
         """
         Writes data to file.
         """
+        await asyncio.sleep(0.1)
+
         filename = await self.generate_file_name(str(image_url[(image_url.rfind('/')) + 1:]))
         image_directory = await self.generate_image_directory()
         image_file_path = image_directory.joinpath(filename)
@@ -497,10 +493,12 @@ class GoogleImagesDownloader():
     async def generate_file_name(self, filename: str) -> str:
         """
         """
+        image_file_allowed_extensions = (".jpg", ".jpeg", ".gif", ".png", ".bmp", ".svg", ".webp", ".ico")
+
         if '?' in filename:
             filename = filename[:filename.find('?')]
 
-        if not any(extension in filename for extension in self.image_file_allowed_extensions):
+        if not any(extension in filename for extension in image_file_allowed_extensions):
             filename = f'{filename}.jpg'
 
         if self.argument["prefix"]:
@@ -524,6 +522,8 @@ class GoogleImagesDownloader():
         """
         Downloads image from provided url to provided sub directory.
         """
+        await asyncio.sleep(0.1)
+
         try:
             attempts += 1
             unquoted_image_thumbnail_url = unquote(image_thumbnail_url)
@@ -541,6 +541,8 @@ class GoogleImagesDownloader():
         """
         Writes data to file.
         """
+        await asyncio.sleep(0.1)
+
         filename = await self.generate_file_name(str(image_url[(image_url.rfind('/')) + 1:]))
         image_thumbnail_directory = await self.generate_image_thumbnail_directory()
         image_thumbnail_file_path = image_thumbnail_directory.joinpath(filename)
@@ -561,6 +563,32 @@ class GoogleImagesDownloader():
 
         return image_thumbnail_directory
 
+    async def download_related_image_google_url(self, raw_html: str) -> None:
+        """
+        """
+        related_image_google_url = await self.get_related_image_google_url(raw_html)
+
+        for google_url in related_image_google_url:
+            related_image_raw_html = await self.get_raw_html_data(google_url)
+
+            if related_image_raw_html != None:
+                await self.generate_image_download_tasks(related_image_raw_html)
+
+            await asyncio.sleep(0.1)
+
+    async def get_related_image_google_url(self, raw_html: str) -> list:
+        """
+        """
+        google_related_image_url = []
+
+        for html_class in re.finditer('class="dgdd6c VM9Z5b"', raw_html):
+            class_content = raw_html[html_class.end():]
+            href_start = class_content.find('href=') + 6
+            href_end = class_content.find('>') - 1
+            google_related_image_url.append(unquote(f'https://www.google.com{class_content[href_start:href_end].replace("&amp;", "&")}'))
+
+        return google_related_image_url
+
     async def write_to_file(self, image_file_path: str, content: bytes) -> None:
         """
         """
@@ -573,6 +601,8 @@ class GoogleImagesDownloader():
     async def get_file_size(self, file_path: str) -> str:
         """
         """
+        file_size_units = ('bytes', 'KB', 'MB', 'GB', 'TB')
+
         try:
             count = 0
             units = ''
@@ -582,7 +612,7 @@ class GoogleImagesDownloader():
                 file_size /= 1024.0
                 count += 1
 
-            units = self.file_size_units[count]
+            units = file_size_units[count]
             file_size_with_units = f'{file_size:.1f} {units}'
 
         except OSError as error:
